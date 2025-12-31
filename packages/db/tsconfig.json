@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "declaration": true,      // <--- REQUIRED: Generates the .d.ts files
+    "declarationMap": true,   // Recommended: Helps with "Go to Definition"
+    "composite": true,        // Recommended for monorepos
+    "rootDir": "src"
+  },
+  "include": ["src/**/*"]
+}

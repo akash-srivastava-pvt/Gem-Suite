@@ -1,1 +1,1 @@
-export { DatabaseModel } from './db.js';
+export { db } from './db.js';

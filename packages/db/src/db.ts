@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
-export class DatabaseModel {
+class DatabaseModel {
   private db!: Database;
   private dbPath: string;
 
@@ -53,6 +53,11 @@ export class DatabaseModel {
     } else {
       this.db = new SQL.Database();
       this.db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)`);
+      this.db.run(`CREATE TABLE IF NOT EXISTS activate (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            apiKey TEXT NOT NULL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          );`)
       this.saveToDisk();
     }
   }
@@ -80,3 +85,5 @@ export class DatabaseModel {
     this.saveToDisk();
   }
 }
+
+export const db = new DatabaseModel();

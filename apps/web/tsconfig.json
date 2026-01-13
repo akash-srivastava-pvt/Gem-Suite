@@ -9,7 +9,7 @@
     "moduleResolution": "NodeNext",
     "noEmit": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*","src/declarations.d.ts"],
   "references": [
     { "path": "../../packages/shared" }
   ]

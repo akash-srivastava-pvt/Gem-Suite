@@ -1,5 +1,13 @@
 export {
     User,
     AppSettings,
-    ApiResponse
+    ApiResponse,
+    GeminiResponse,
+    Activate,
+    ShellApp,
+    TripPromptInput,
+    TripPlan,
+    TextEditorInput,
+    TextEditorIntent,
+    Coordinates,
 } from './types.js';

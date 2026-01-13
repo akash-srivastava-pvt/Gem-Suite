@@ -2,19 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import 'dotenv/config';
-import userRoutes from './routes/userRoutes.js';
+import {apiRouter } from './routes/index.js';
 import { fileURLToPath } from 'url';
 import { Express } from 'express';
 // 1. Import your Database logic
-import { DatabaseModel } from '@gem/db'; 
+import { db } from '@gem/db'; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app: Express = express();
 const PORT = process.env.PORT || 3001;
-
-// 2. Initialize Database at the top level
-const db = new DatabaseModel();
 
 // We wrap the start logic to ensure DB is ready
 async function startServer() {
@@ -27,7 +24,7 @@ async function startServer() {
     app.use(express.json());
 
     // API Routes
-    app.use('/api/users', userRoutes);
+    app.use('/api/v1', apiRouter);
 
     /**
      * PRODUCTION & ELECTRON LOGIC
@@ -81,7 +78,6 @@ process.on('SIGTERM', () => {
   // but this ensures a clean exit for the process.
   process.exit(0);
 });
-
 startServer();
 
 export default app;

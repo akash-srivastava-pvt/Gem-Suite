@@ -7,8 +7,9 @@
     "target": "ESNext",
     "composite": true,
     "incremental": true, 
-    "tsBuildInfoFile": "dist/.tsbuildinfo" 
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "types": ["node", "express", "cors"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/agents/.agent.ts", "src/script.ts"],
   "exclude": ["node_modules", "dist"]
 }

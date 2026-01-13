@@ -1,87 +1,114 @@
-import express from 'express';
+import express, { Express } from 'express';
 import cors from 'cors';
 import path from 'path';
 import 'dotenv/config';
-import userRoutes from './routes/userRoutes.js';
 import { fileURLToPath } from 'url';
-import { Express } from 'express';
-// 1. Import your Database logic
-import { DatabaseModel } from '@gem/db'; 
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const app: Express = express();
-const PORT = process.env.PORT || 3001;
+// ✅ Safe directory name for both ESM (Dev/TSX) and CJS (Prod/Packed)
+const SERVER_DIR = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
 
-// 2. Initialize Database at the top level
-const db = new DatabaseModel();
+// ============================================
+// STATIC IMPORTS (NO dynamic import)
+// esbuild resolves monorepo packages at build time
+// ============================================
 
-// We wrap the start logic to ensure DB is ready
+import { db } from '@gem/db';
+import { apiRouter } from './routes/index.js';
+
+// ============================================
+// SERVER STARTUP
+// ============================================
+
 async function startServer() {
   try {
-    console.log('⏳ Initializing Database...');
+    console.log('⏳ Initializing database...');
     await db.init();
-    console.log('✅ Database Ready');
+    console.log('✅ Database ready');
+
+    const app: Express = express();
 
     app.use(cors());
     app.use(express.json());
 
-    // API Routes
-    app.use('/api/users', userRoutes);
+    // ============================================
+    // API
+    // ============================================
 
-    /**
-     * PRODUCTION & ELECTRON LOGIC
-     */
-    const publicPath = process.env.WEB_DIST_PATH || path.join(__dirname, '../../web/dist');
+    app.use('/api/v1', apiRouter);
 
-    console.log(`📂 Serving static files from: ${publicPath}`);
+    app.get('/health', (_req, res) => {
+      res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      });
+    });
 
-    // Always serve static files if the directory exists
+    // ============================================
+    // FRONTEND (Electron-served React)
+    // ============================================
+
+    const publicPath =
+      process.env.WEB_DIST_PATH ||
+      path.join(SERVER_DIR, '../web'); // ← derived path
+
+    console.log(`📂 Serving frontend from: ${publicPath}`);
+
     app.use(express.static(publicPath));
 
-    // SPA Routing: Serve index.html for non-API requests
+    // SPA fallback
     app.get('*', (req, res) => {
       if (req.path.startsWith('/api')) {
         return res.status(404).json({ error: 'API route not found' });
       }
 
-      const indexPath = path.join(publicPath, 'index.html');
-      
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          // This error often happens if the 'web' build didn't happen before packaging
-          res.status(500).send("Frontend build not found. Check your resources folder.");
-        }
-      });
+      res.sendFile(path.join(publicPath, 'index.html'));
     });
+
+    // ============================================
+    // START SERVER
+    // ============================================
+
+
+    const PORT = Number(process.env.PORT) || 0;
 
     const server = app.listen(PORT, () => {
-      console.log(`✅ Server running on http://localhost:${PORT}`);
-    });
+      const address = server.address();
+      const actualPort =
+        typeof address === 'string' ? PORT : address?.port;
 
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use.`);
-        process.exit(1); 
-      } else {
-        console.error('❌ Server error:', err);
+      console.log(`✅ Server running on http://localhost:${actualPort}`);
+
+      // Notify Electron main
+      if (process.send) {
+        process.send({
+          type: 'server-ready',
+          port: actualPort,
+        });
       }
     });
 
+    server.on('error', (err: any) => {
+      console.error('❌ Server error:', err);
+      process.exit(1);
+    });
   } catch (err) {
-    console.error('❌ Failed to start server:', err);
+    console.error('❌ Failed to start server');
+    console.error(err);
     process.exit(1);
   }
 }
 
-// 3. Handle Graceful Shutdown (Important for saving sqlite data)
-process.on('SIGTERM', () => {
-  console.log('Closing server and saving DB...');
-  // Your DatabaseModel handles save-on-execute, 
-  // but this ensures a clean exit for the process.
-  process.exit(0);
-});
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+
+process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => process.exit(0));
+
+// ============================================
+// START
+// ============================================
 
 startServer();
-
-export default app;

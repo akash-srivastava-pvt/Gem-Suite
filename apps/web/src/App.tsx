@@ -1,65 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import { User } from '@gem/shared';
-import { userService } from './services/userService.js';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Activate from './auth/index.js';
+import ActivationGuard from './auth/ActivationGuard.js';
+import Home from './Home.js';
+import ErrorModal from './components/ErrorModal.js';
+import { activateService } from './services/activateService.js';
 
-export default function App() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
+const App: React.FC = () => {
+    const [activated, setActivated] = useState<boolean>(false);
+    const [loading, setLoading] = useState<boolean>(true);
 
-  // Fetch users on mount
-  const loadUsers = async () => {
-    try {
-      const data = await userService.getAll();
-      setUsers(data);
-    } catch (err) {
-      console.error("Fetch error:", err);
-    }
-  };
+    /**
+     * Initialize API client and check activation status on mount
+     */
+    useEffect(() => {
+        const init = async () => {
+            try {
+                // Check if stored key is still valid (no retries)
+                const isActive = await activateService.get()|| false;
+                setActivated(isActive);
+            } catch (err: unknown) {
+                console.error('Failed to initialize app:', err);
+                setActivated(false);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+        init();
+    }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
+    return (
+        <BrowserRouter>
+            <ErrorModal />
+            <Routes>
+                {/* Activation Page */}
+                <Route path="/activate" element={<Activate />} />
 
-    setLoading(true);
-    await userService.create(name);
-    setName('');
-    await loadUsers();
-    setLoading(false);
-    
-    // Optional: Use the Electron Bridge from our preload script
-    if (window.gem) {
-      window.gem.sendNotification(`User ${name} added!`);
-    }
-  };
+                {/* Protected App Routes */}
+                <Route
+                    path="/"
+                    element={
+                        <ActivationGuard activated={activated} loading={loading}>
+                            <Home />
+                        </ActivationGuard>
+                    }
+                />
 
-  return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Gem-Suite Dashboard</h1>
-      
-      <form onSubmit={handleSubmit}>
-        <input 
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter user name"
-          disabled={loading}
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Saving...' : 'Add User'}
-        </button>
-      </form>
+                {/* 404 - Fallback to home */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </BrowserRouter>
+    );
+};
 
-      <hr />
-
-      <ul>
-        {users.map((user) => (
-          <li key={user.id}>{user.name}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+export default App;

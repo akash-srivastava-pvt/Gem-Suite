@@ -3,12 +3,29 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "module": "NodeNext",
-    "target": "ESNext",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2020",
     "composite": true,
-    "incremental": true, 
-    "tsBuildInfoFile": "dist/.tsbuildinfo" 
+    "incremental": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/shared"
+    }
+  ]
 }

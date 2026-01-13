@@ -9,15 +9,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gem/shared": "*",
+    "html2pdf.js": "^0.12.1",
+    "install": "^0.13.0",
+    "leaflet": "^1.9.4",
+    "npm": "^11.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@gem/shared": "*"
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.11.0"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.2.2",
+    "typescript": "latest",
     "vite": "^5.0.8"
   }
 }

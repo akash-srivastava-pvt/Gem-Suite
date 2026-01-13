@@ -50,14 +50,14 @@ export const ActivateController = {
         return res.status(400).json({ error: 'Invalid Gemini API key' });
       }
 
-      const encryptedKey = encrypt(key);
+      const encryptedKey = await encrypt(key);
 
       // UPSERT – ensures only one row with id = 1
       await db.execute(
         `
-        INSERT INTO activate (id, key)
+        INSERT INTO activate (id, apiKey)
         VALUES (1, ?)
-        ON CONFLICT(id) DO UPDATE SET key = excluded.key
+        ON CONFLICT(id) DO UPDATE SET apiKey = excluded.apiKey
         `,
         [encryptedKey]
       );

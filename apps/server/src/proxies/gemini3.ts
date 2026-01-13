@@ -1,4 +1,4 @@
-import { GeminiResponse } from "@gem/shared/src/index.js";
+import { GeminiResponse } from "@gem/shared";
 
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"; // Updated model name for 2026
@@ -85,7 +85,7 @@ export async function callGemini(
       // Handle Timeout/Abort error
       if (err.name === 'AbortError') {
         if (attempt < retries) {
-          continue; 
+          continue;
         }
         throw new Error("Gemini request timed out");
       }

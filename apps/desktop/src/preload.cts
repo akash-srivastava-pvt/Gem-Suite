@@ -1,18 +1,30 @@
-// apps/desktop/src/preload.cts
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
+
+interface GemAPI {
+  platform: string;
+  getVersion: () => Promise<string>;
+  sendNotification: (message: string) => void;
+  restart: () => void;
+}
 
 contextBridge.exposeInMainWorld('gem', {
   platform: process.platform,
-  getVersion: () => ipcRenderer.invoke('get-app-version'),
-  
-  // ADD THIS LINE:
-  sendNotification: (message: string) => ipcRenderer.send('notify', message),
 
-  onServerReady: (callback: any) => {
-    const subscription = (_event: any, url: any) => callback(url);
-    ipcRenderer.on('server-ready', subscription);
-    return () => {
-      ipcRenderer.removeListener('server-ready', subscription);
-    };
+  getVersion: (): Promise<string> => {
+    return ipcRenderer.invoke('get-app-version');
+  },
+
+  sendNotification: (message: string): void => {
+    ipcRenderer.send('notify', message);
+  },
+
+  restart: (): void => {
+    ipcRenderer.send('restart-app');
   }
-});
+} as GemAPI);
+
+declare global {
+  interface Window {
+    gem: GemAPI;
+  }
+}

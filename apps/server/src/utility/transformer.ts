@@ -2,49 +2,48 @@ import { transformToTOON } from "./toonTransformer.js";
 import { countApproxTokens } from "./tokenCounter.js";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 export const transform = async () => {
-    const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+  const __dirname = path.dirname(__filename);
 
-// Inputs
-const inputFiles = [
-  path.resolve(__dirname, "../data/input.csv")
-];
 
-const outputTOON = path.resolve(__dirname, "../data/output.toon");
+  // Inputs
+  const inputFiles = [
+    path.resolve(__dirname, "../data/input.csv")
+  ];
 
-console.log("▶ Reading CSV files...");
+  const outputTOON = path.resolve(__dirname, "../data/output.toon");
 
-let combinedCSV = "";
+  console.log("▶ Reading CSV files...");
 
-for (const file of inputFiles) {
-  const content = await fs.readFile(file, "utf8");
-  combinedCSV += "\n" + content;
-}
+  let combinedCSV = "";
 
-// 1️⃣ Count CSV tokens
-const csvTokens = countApproxTokens(combinedCSV);
+  for (const file of inputFiles) {
+    const content = await fs.readFile(file, "utf8");
+    combinedCSV += "\n" + content;
+  }
 
-// 2️⃣ Generate TOON
-const toonText = await transformToTOON(inputFiles, outputTOON);
+  // 1️⃣ Count CSV tokens
+  const csvTokens = countApproxTokens(combinedCSV);
 
-// 3️⃣ Count TOON tokens
-const toonTokens = countApproxTokens(toonText);
+  // 2️⃣ Generate TOON
+  const toonText = await transformToTOON(inputFiles, outputTOON);
 
-// 4️⃣ Print comparison
-console.log("\n📊 TOKEN COMPARISON");
-console.log("────────────────────────────");
-console.log(`CSV Tokens   : ${csvTokens}`);
-console.log(`TOON Tokens  : ${toonTokens}`);
-console.log(
-  `Reduction    : ${(
-    ((csvTokens - toonTokens) / csvTokens) *
-    100
-  ).toFixed(2)}%`
-);
-console.log("────────────────────────────");
-console.log(`📁 TOON saved at: ${outputTOON}`);
+  // 3️⃣ Count TOON tokens
+  const toonTokens = countApproxTokens(toonText);
+
+  // 4️⃣ Print comparison
+  console.log("\n📊 TOKEN COMPARISON");
+  console.log("────────────────────────────");
+  console.log(`CSV Tokens   : ${csvTokens}`);
+  console.log(`TOON Tokens  : ${toonTokens}`);
+  console.log(
+    `Reduction    : ${(
+      ((csvTokens - toonTokens) / csvTokens) *
+      100
+    ).toFixed(2)}%`
+  );
+  console.log("────────────────────────────");
+  console.log(`📁 TOON saved at: ${outputTOON}`);
 
 }

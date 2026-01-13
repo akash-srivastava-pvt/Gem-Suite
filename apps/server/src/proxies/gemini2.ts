@@ -1,4 +1,4 @@
-import { GeminiResponse } from "@gem/shared/src/index.js";
+import { GeminiResponse } from "@gem/shared";
 
 // URL remains the same
 const GEMINI_URL =

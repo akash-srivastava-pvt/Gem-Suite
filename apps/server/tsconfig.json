@@ -4,12 +4,29 @@
     "outDir": "dist",
     "rootDir": "src",
     "module": "NodeNext",
-    "target": "ESNext",
+    "target": "ES2020",
     "composite": true,
-    "incremental": true, 
+    "incremental": true,
     "tsBuildInfoFile": "dist/.tsbuildinfo",
-    "types": ["node", "express", "cors"]
+    "types": [
+      "node",
+      "express",
+      "cors"
+    ]
   },
-  "include": ["src/**/*", "src/agents/.agent.ts", "src/script.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/shared"
+    }
+  ]
 }

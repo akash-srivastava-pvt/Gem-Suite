@@ -3,10 +3,11 @@ import { callGemini } from '../proxies/gemini2.js';
 import { ValidationError } from '../utility/errors.js';
 import { getApiKey } from '../utility/helper.js';
 import { buildTripPlannerPrompt } from '../agents/trip.plan.agent.js';
+import { LoggerModel } from '../models/loggerModel.js';
 
 export async function TripController(req: Request, res: Response) {
     try {
-        const {data} = req.body;
+        const { data } = req.body;
         // 1. Basic Validations
         if (!Array.isArray(data.places) || data.places.length === 0) {
             return res.status(400).json({ error: 'At least one place must be selected' });
@@ -48,10 +49,12 @@ export async function TripController(req: Request, res: Response) {
         // 5. External API Call
         const rawResponse = (await callGemini(apiKey, message)).data;
 
+        LoggerModel.log(`Gemini API called for trip planning: ${data.places.join(', ')}`);
+
         // 6. JSON Sanitization (Very Important for AI responses)
         // Markdown backticks hatane ke liye
         const cleanedData = rawResponse.replace(/```json|```/g, "").trim();
-        
+
         try {
             const parsedData = JSON.parse(cleanedData);
             return res.status(200).json({ success: true, data: parsedData });
@@ -63,7 +66,7 @@ export async function TripController(req: Request, res: Response) {
 
     } catch (error: any) {
         console.error('Trip planning failed:', error);
-        
+
         // Handle Validation Errors specifically if needed
         if (error instanceof ValidationError) {
             return res.status(400).json({ error: error.message });

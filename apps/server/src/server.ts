@@ -16,6 +16,7 @@ const SERVER_DIR = typeof __dirname !== 'undefined'
 
 import { db } from '@gem/db';
 import { apiRouter } from './routes/index.js';
+import { LoggerModel } from './models/loggerModel.js';
 
 // ============================================
 // SERVER STARTUP
@@ -79,6 +80,7 @@ async function startServer() {
         typeof address === 'string' ? PORT : address?.port;
 
       console.log(`✅ Server running on http://localhost:${actualPort}`);
+      LoggerModel.log('Session started: Server initialized');
 
       // Notify Electron main
       if (process.send) {
@@ -104,8 +106,14 @@ async function startServer() {
 // GRACEFUL SHUTDOWN
 // ============================================
 
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => {
+  LoggerModel.log('Session ended: Received SIGTERM');
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  LoggerModel.log('Session ended: Received SIGINT');
+  process.exit(0);
+});
 
 // ============================================
 // START

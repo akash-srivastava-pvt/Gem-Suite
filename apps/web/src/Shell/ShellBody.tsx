@@ -27,7 +27,9 @@ export default ShellBody;
 const styles = {
     body: {
         flex: 1,
-        padding: 16,
-        overflow: "auto",
+        // Remove padding and overflow so apps can handle their own layout (fitting to screen)
+        height: "100%",
+        display: "flex",
+        flexDirection: "column" as const,
     },
 };

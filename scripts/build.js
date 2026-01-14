@@ -22,9 +22,14 @@ const run = (cmd) => {
 try {
     // 1. Force kill background processes
     console.log('🔫 1/4: Killing background processes...');
+    const isWin = process.platform === 'win32';
     try {
-        execSync('taskkill //F //IM electron.exe //T 2>/dev/null || true');
-        execSync('taskkill //F //IM node.exe //T 2>/dev/null || true');
+        if (isWin) {
+            // execSync('taskkill /F /IM electron.exe /T 2>nul || (exit 0)', { shell: true });
+            // execSync('taskkill /F /IM node.exe /T 2>nul || (exit 0)', { shell: true });
+        } else {
+            execSync('killall node 2>/dev/null || true');
+        }
     } catch (e) { /* ignore */ }
 
     // 2. Clean dist folders

@@ -23,7 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/server.ts
-var import_express5 = __toESM(require("express"), 1);
+var import_express7 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_path3 = __toESM(require("path"), 1);
 var import_config = require("dotenv/config");
@@ -88,13 +88,30 @@ var DatabaseModel = class {
         this.db = new SQL.Database();
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
-          name TEXT
+          name TEXT,
+          personalAgreement BOOLEAN
         )`);
         this.db.run(`CREATE TABLE IF NOT EXISTS activate (
           id INTEGER PRIMARY KEY CHECK (id = 1),
           apiKey TEXT NOT NULL,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
+        this.db.run(`CREATE TABLE IF NOT EXISTS logger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event TEXT NOT NULL,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        this.db.run(`CREATE TABLE IF NOT EXISTS resume (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          contacts TEXT,           -- JSON array of objects
+          links TEXT,              -- JSON array of objects
+          work_history TEXT,       -- JSON array of objects
+          education TEXT,          -- JSON array of objects
+          personal_projects TEXT,  -- JSON array of objects
+          skills TEXT,             -- JSON array of objects
+          cover_letter_para TEXT   -- long text
+      )`);
         this.saveToDisk();
       }
       console.log("\u2705 Database initialized successfully");
@@ -130,7 +147,7 @@ var DatabaseModel = class {
 var db = new DatabaseModel();
 
 // src/routes/index.ts
-var import_express4 = require("express");
+var import_express6 = require("express");
 
 // src/routes/activateRoutes.ts
 var import_express = require("express");
@@ -250,6 +267,16 @@ async function getApiKey() {
   return decryptedKey;
 }
 
+// src/models/loggerModel.ts
+var LoggerModel = {
+  getLogs: () => {
+    return db.query("SELECT * FROM logger ORDER BY timestamp DESC LIMIT 50");
+  },
+  log: (event) => {
+    db.execute("INSERT INTO logger (event) VALUES (?)", [event]);
+  }
+};
+
 // src/controllers/activateController.ts
 var ActivateController = {
   // GET /api/v1/activate
@@ -267,6 +294,7 @@ var ActivateController = {
       const encryptedKey = rows[0].apiKey;
       const apiKey = await decrypt(encryptedKey);
       const isValid = await validateGeminiApiKey(apiKey);
+      LoggerModel.log(`Gemini API key validated: ${isValid ? "Success" : "Failed"}`);
       return res.json({
         success: isValid,
         message: isValid ? "User is authorised" : "User is not authorised"
@@ -296,6 +324,7 @@ var ActivateController = {
         `,
         [encryptedKey]
       );
+      LoggerModel.log("Gemini API key activated and saved");
       res.status(201).json({
         success: true,
         message: "User activated successfully"
@@ -529,6 +558,7 @@ async function TripController(req, res) {
       tripType: data.tripType
     });
     const rawResponse = (await callGemini(apiKey, message)).data;
+    LoggerModel.log(`Gemini API called for trip planning: ${data.places.join(", ")}`);
     const cleanedData = rawResponse.replace(/```json|```/g, "").trim();
     try {
       const parsedData = JSON.parse(cleanedData);
@@ -640,6 +670,7 @@ async function TextEditorController(req, res) {
       tone
     });
     const result = (await callGemini(apiKey, prompt)).data;
+    LoggerModel.log(`Gemini API called for text editing: ${intent}`);
     return res.status(200).json({
       success: true,
       data: result
@@ -658,11 +689,313 @@ var router3 = (0, import_express3.Router)();
 router3.post("/", TextEditorController);
 var textEditorRoutes_default = router3;
 
+// src/routes/invitationRoutes.ts
+var import_express4 = require("express");
+
+// src/proxies/gemini2img.ts
+var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+var REQUEST_TIMEOUT2 = 3e4;
+var MAX_RETRIES2 = 2;
+async function callGemini2(apiKey, prompt) {
+  if (!apiKey || !prompt) {
+    throw new Error("API key and prompt are required");
+  }
+  for (let attempt = 0; attempt <= MAX_RETRIES2; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT2
+    );
+    try {
+      const response = await fetch(`${GEMINI_URL2}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"]
+          }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const status = response.status;
+        const errorText = await response.text();
+        if (status === 401 || status === 403) {
+          throw new Error("Invalid Gemini API key");
+        }
+        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES2) {
+          await new Promise(
+            (r) => setTimeout(r, 1e3 * (attempt + 1))
+          );
+          continue;
+        }
+        throw new Error(
+          `Gemini request failed (${status}): ${errorText}`
+        );
+      }
+      const resData = await response.json();
+      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
+        (p) => p.inlineData
+      );
+      if (!imagePart?.inlineData?.data) {
+        throw new Error("No image returned from Gemini");
+      }
+      return {
+        image: {
+          mimeType: imagePart.inlineData.mimeType,
+          base64: imagePart.inlineData.data
+        }
+      };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        if (attempt < MAX_RETRIES2) {
+          await new Promise(
+            (r) => setTimeout(r, 1e3 * (attempt + 1))
+          );
+          continue;
+        }
+        throw new Error("Gemini request timed out");
+      }
+      if (attempt < MAX_RETRIES2) {
+        await new Promise(
+          (r) => setTimeout(r, 1e3 * (attempt + 1))
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Gemini request failed after retries");
+}
+
+// src/agents/wedding.invitation.agent.ts
+function religionStyle(religion) {
+  switch (religion) {
+    case "hindu":
+      return "Traditional Hindu wedding motifs, mandap, marigold flowers";
+    case "muslim":
+      return "Elegant Islamic geometric patterns, crescent motifs";
+    case "christian":
+      return "Soft floral Christian wedding invitation style";
+    default:
+      return "Elegant wedding invitation design";
+  }
+}
+function languageInstruction(language) {
+  if (language === "hindi")
+    return "All text must be in Hindi (Devanagari script)";
+  if (language === "urdu")
+    return "All text must be in Urdu (Nastaliq script)";
+  return "All text must be in English";
+}
+function buildInvitationPrompt(data) {
+  return `
+Create a vertical wedding invitation card.
+
+Style:
+- ${religionStyle(data.religion)}
+- Premium, clean, print-ready
+- No spelling mistakes
+- No watermark
+
+Language:
+- ${languageInstruction(data.language)}
+
+Text content (exact):
+"${data.groomName} & ${data.brideName}"
+Date: ${data.date}
+Time: ${data.time}
+Venue: ${data.venue}
+${data.familyDetails ? `Family: ${data.familyDetails}` : ""}
+${data.rsvpContact ? `RSVP: ${data.rsvpContact}` : ""}
+
+Output:
+- High-resolution PNG
+- Suitable for WhatsApp and print
+`;
+}
+
+// src/controllers/weddingInvitationController.ts
+async function WeddingInvitationController(req, res) {
+  try {
+    const { data } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: "Request data is required" });
+    }
+    const {
+      groomName,
+      brideName,
+      date,
+      time,
+      venue,
+      religion,
+      language
+    } = data;
+    if (!groomName || !brideName) {
+      return res.status(400).json({ error: "Bride and Groom names are required" });
+    }
+    if (!date || !time || !venue) {
+      return res.status(400).json({ error: "Date, time, and venue are required" });
+    }
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return res.status(401).json({
+        error: "Gemini API key not found. Please activate first."
+      });
+    }
+    const prompt = buildInvitationPrompt({
+      theme: "wedding",
+      groomName,
+      brideName,
+      date,
+      time,
+      venue,
+      religion,
+      language,
+      familyDetails: data.familyDetails,
+      rsvpContact: data.rsvpContact
+    });
+    const geminiResponse = await callGemini2(apiKey, prompt);
+    LoggerModel.log(`Gemini API called for wedding invitation generation: ${groomName} & ${brideName}`);
+    if (!geminiResponse?.image?.base64) {
+      return res.status(502).json({
+        error: "Gemini did not return an image"
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      image: {
+        mimeType: geminiResponse.image.mimeType,
+        base64: geminiResponse.image.base64
+      }
+    });
+  } catch (error) {
+    console.error("Wedding invitation generation failed:", error);
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Internal Server Error during invitation generation"
+      });
+    }
+  }
+}
+
+// src/routes/invitationRoutes.ts
+var router4 = (0, import_express4.Router)();
+router4.post(
+  "/wedding",
+  WeddingInvitationController
+);
+var invitationRoutes_default = router4;
+
+// src/routes/user.routes.ts
+var import_express5 = require("express");
+
+// src/models/userModel.ts
+var UserModel = {
+  getUser: () => {
+    const rows = db.query("SELECT * FROM users LIMIT 1");
+    return rows.length > 0 ? rows[0] : null;
+  },
+  createUser: (name) => {
+    db.execute(
+      "INSERT INTO users (name, personalAgreement) VALUES (?, ?)",
+      [name, true]
+    );
+    db.execute("INSERT INTO logger (event) VALUES (?)", [`User agreement signed by ${name}`]);
+  },
+  deleteData: () => {
+    db.execute("DELETE FROM users");
+    db.execute("DELETE FROM activate");
+    db.execute("DELETE FROM resume");
+    db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
+  },
+  hasAgreed: () => {
+    const user = UserModel.getUser();
+    return user ? !!user.personalAgreement : false;
+  }
+};
+
+// src/controllers/userController.ts
+var UserController = {
+  getStatus: (req, res) => {
+    try {
+      const user = UserModel.getUser();
+      return res.json({
+        agreed: user ? !!user.personalAgreement : false,
+        name: user?.name
+      });
+    } catch (error) {
+      console.error("[USER][GET_STATUS]", error);
+      return res.status(500).json({ error: "Failed to get user status" });
+    }
+  },
+  agree: (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== "string" || name.trim() === "") {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      if (UserModel.hasAgreed()) {
+        return res.status(409).json({ error: "Agreement already exists" });
+      }
+      UserModel.createUser(name.trim());
+      return res.status(201).json({
+        success: true,
+        message: "Agreement recorded successfully"
+      });
+    } catch (error) {
+      console.error("[USER][AGREE]", error);
+      return res.status(500).json({ error: "Failed to record agreement" });
+    }
+  },
+  getLogs: (req, res) => {
+    try {
+      const logs = LoggerModel.getLogs();
+      return res.json(logs);
+    } catch (error) {
+      console.error("[USER][GET_LOGS]", error);
+      return res.status(500).json({ error: "Failed to fetch logs" });
+    }
+  },
+  deleteData: (req, res) => {
+    try {
+      UserModel.deleteData();
+      return res.json({ success: true, message: "All data except logs deleted" });
+    } catch (error) {
+      console.error("[USER][DELETE_DATA]", error);
+      return res.status(500).json({ error: "Failed to delete data" });
+    }
+  }
+};
+
+// src/routes/user.routes.ts
+var router5 = (0, import_express5.Router)();
+router5.get("/status", UserController.getStatus);
+router5.post("/agree", UserController.agree);
+router5.get("/logs", UserController.getLogs);
+router5.post("/delete-data", UserController.deleteData);
+var user_routes_default = router5;
+
 // src/routes/index.ts
-var apiRouter = (0, import_express4.Router)();
+var apiRouter = (0, import_express6.Router)();
 apiRouter.use("/activate", activateRoutes_default);
 apiRouter.use("/trip", tripRoutes_default);
 apiRouter.use("/text-editor", textEditorRoutes_default);
+apiRouter.use("/invitation", invitationRoutes_default);
+apiRouter.use("/user", user_routes_default);
 
 // src/server.ts
 var import_meta = {};
@@ -672,9 +1005,9 @@ async function startServer() {
     console.log("\u23F3 Initializing database...");
     await db.init();
     console.log("\u2705 Database ready");
-    const app = (0, import_express5.default)();
+    const app = (0, import_express7.default)();
     app.use((0, import_cors.default)());
-    app.use(import_express5.default.json());
+    app.use(import_express7.default.json());
     app.use("/api/v1", apiRouter);
     app.get("/health", (_req, res) => {
       res.json({
@@ -684,7 +1017,7 @@ async function startServer() {
     });
     const publicPath = process.env.WEB_DIST_PATH || import_path3.default.join(SERVER_DIR, "../web");
     console.log(`\u{1F4C2} Serving frontend from: ${publicPath}`);
-    app.use(import_express5.default.static(publicPath));
+    app.use(import_express7.default.static(publicPath));
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API route not found" });
@@ -696,6 +1029,7 @@ async function startServer() {
       const address = server.address();
       const actualPort = typeof address === "string" ? PORT : address?.port;
       console.log(`\u2705 Server running on http://localhost:${actualPort}`);
+      LoggerModel.log("Session started: Server initialized");
       if (process.send) {
         process.send({
           type: "server-ready",
@@ -713,6 +1047,12 @@ async function startServer() {
     process.exit(1);
   }
 }
-process.on("SIGTERM", () => process.exit(0));
-process.on("SIGINT", () => process.exit(0));
+process.on("SIGTERM", () => {
+  LoggerModel.log("Session ended: Received SIGTERM");
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  LoggerModel.log("Session ended: Received SIGINT");
+  process.exit(0);
+});
 startServer();

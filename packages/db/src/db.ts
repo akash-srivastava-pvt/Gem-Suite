@@ -95,7 +95,8 @@ class DatabaseModel {
 
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
-          name TEXT
+          name TEXT,
+          personalAgreement BOOLEAN
         )`);
 
         this.db.run(`CREATE TABLE IF NOT EXISTS activate (
@@ -103,6 +104,25 @@ class DatabaseModel {
           apiKey TEXT NOT NULL,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        this.db.run(`CREATE TABLE IF NOT EXISTS logger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event TEXT NOT NULL,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        this.db.run(`CREATE TABLE IF NOT EXISTS resume (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          contacts TEXT,           -- JSON array of objects
+          links TEXT,              -- JSON array of objects
+          work_history TEXT,       -- JSON array of objects
+          education TEXT,          -- JSON array of objects
+          personal_projects TEXT,  -- JSON array of objects
+          skills TEXT,             -- JSON array of objects
+          cover_letter_para TEXT   -- long text
+      )`);
+
 
         this.saveToDisk();
       }

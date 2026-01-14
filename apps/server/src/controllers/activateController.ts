@@ -3,6 +3,7 @@ import { db } from '@gem/db';
 import { Activate } from '@gem/shared';
 import { decrypt, encrypt } from '../utility/security.js';
 import { validateGeminiApiKey } from '../utility/helper.js';
+import { LoggerModel } from '../models/loggerModel.js';
 
 export const ActivateController = {
   // GET /api/v1/activate
@@ -23,6 +24,8 @@ export const ActivateController = {
       const apiKey = await decrypt(encryptedKey);
 
       const isValid = await validateGeminiApiKey(apiKey);
+
+      LoggerModel.log(`Gemini API key validated: ${isValid ? 'Success' : 'Failed'}`);
 
       return res.json({
         success: isValid,
@@ -61,6 +64,8 @@ export const ActivateController = {
         `,
         [encryptedKey]
       );
+
+      LoggerModel.log('Gemini API key activated and saved');
 
       res.status(201).json({
         success: true,

@@ -2,6 +2,7 @@ import { callGemini } from "../proxies/gemini2.js";
 import { buildTextEditorPrompt } from "../agents/text.editor.agent.js";
 import { getApiKey } from "../utility/helper.js";
 import { Request, Response } from "express";
+import { LoggerModel } from "../models/loggerModel.js";
 
 export async function TextEditorController(req: Request, res: Response) {
   try {
@@ -28,6 +29,8 @@ export async function TextEditorController(req: Request, res: Response) {
     });
 
     const result = (await callGemini(apiKey, prompt)).data;
+
+    LoggerModel.log(`Gemini API called for text editing: ${intent}`);
 
     return res.status(200).json({
       success: true,

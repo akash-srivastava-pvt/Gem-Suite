@@ -5,6 +5,10 @@ interface GemAPI {
   getVersion: () => Promise<string>;
   sendNotification: (message: string) => void;
   restart: () => void;
+  checkNetwork: () => Promise<boolean>;
+  continueToLocal: () => void;
+  sendNetworkStatus: (status: 'online' | 'offline') => void;
+  onNetworkStatusChange: (callback: (status: 'online' | 'offline') => void) => void;
 }
 
 contextBridge.exposeInMainWorld('gem', {
@@ -20,6 +24,22 @@ contextBridge.exposeInMainWorld('gem', {
 
   restart: (): void => {
     ipcRenderer.send('restart-app');
+  },
+
+  checkNetwork: (): Promise<boolean> => {
+    return ipcRenderer.invoke('check-network');
+  },
+
+  continueToLocal: (): void => {
+    ipcRenderer.send('continue-to-local');
+  },
+
+  sendNetworkStatus: (status: 'online' | 'offline'): void => {
+    ipcRenderer.send('network-status-change', status);
+  },
+
+  onNetworkStatusChange: (callback: (status: 'online' | 'offline') => void): void => {
+    ipcRenderer.on('network-status-change', (_, status) => callback(status));
   }
 } as GemAPI);
 

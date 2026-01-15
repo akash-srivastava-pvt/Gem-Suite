@@ -17,7 +17,7 @@ const App: React.FC = () => {
         const init = async () => {
             try {
                 // Check if stored key is still valid (no retries)
-                const isActive = await activateService.get()|| false;
+                const isActive = await activateService.get() || false;
                 setActivated(isActive);
             } catch (err: unknown) {
                 console.error('Failed to initialize app:', err);
@@ -28,6 +28,18 @@ const App: React.FC = () => {
         };
 
         init();
+
+        // Network awareness
+        const handleOnline = () => window.gem?.sendNetworkStatus?.('online');
+        const handleOffline = () => window.gem?.sendNetworkStatus?.('offline');
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
     }, []);
 
     return (

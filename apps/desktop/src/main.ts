@@ -11,12 +11,15 @@ import path from 'path';
 import fs from 'fs';
 import { fork, ChildProcess } from 'child_process';
 import http from 'http';
+import dns from 'dns';
+
 const IS_PROD = app.isPackaged;
 const LOG_FILE = path.join(app.getPath('userData'), 'app.log');
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
 let isQuitting = false;
+let currentPort: number | null = null;
 
 function log(msg: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') {
   const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`;
@@ -45,10 +48,21 @@ function getPreloadPath(): string {
   return p;
 }
 
+function checkInternet(): Promise<boolean> {
+  return new Promise((resolve) => {
+    dns.lookup('google.com', (err) => {
+      if (err) {
+        log(`Network check failed: ${err.message}`, 'WARN');
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+
 function startServer(): Promise<number> {
   return new Promise((resolve, reject) => {
-    // Production: resources/server/server.js (CommonJS bundle + node_modules)
-    // Development: apps/server/dist/server.js
     const serverPath = IS_PROD
       ? path.join(process.resourcesPath, 'server', 'server.js')
       : path.resolve(__dirname, '../../server/dist/server.js');
@@ -81,6 +95,7 @@ function startServer(): Promise<number> {
       if (msg?.type === 'server-ready' && !resolved) {
         resolved = true;
         log(`Server ready: ${msg.port}`);
+        currentPort = msg.port;
         resolve(msg.port);
       }
     });
@@ -191,6 +206,7 @@ async function init() {
   log(`Log: ${LOG_FILE}`);
 
   const loaderPath = getAssetPath('loader.html');
+  const offlinePath = getAssetPath('offline.html');
 
   if (!fs.existsSync(loaderPath)) {
     log('Loader missing', 'ERROR');
@@ -201,6 +217,12 @@ async function init() {
 
   createWindow(`file://${loaderPath}`);
 
+  const isOnline = await checkInternet();
+  if (!isOnline) {
+    log('Offline detected at startup', 'WARN');
+    // We still start the server, but show the offline page first
+  }
+
   try {
     const port = await startServer();
     const healthy = await waitForHealth(port);
@@ -209,7 +231,11 @@ async function init() {
       throw new Error('Health check failed');
     }
 
-    createWindow(`http://localhost:${port}`);
+    if (!isOnline) {
+      createWindow(`file://${offlinePath}`);
+    } else {
+      createWindow(`http://localhost:${port}`);
+    }
     log('=== APP READY ===');
 
   } catch (err: any) {
@@ -220,7 +246,6 @@ async function init() {
       `Failed to start:\n${err.message}\n\nLog:\n${LOG_FILE}`
     );
 
-    const offlinePath = getAssetPath('offline.html');
     if (fs.existsSync(offlinePath)) {
       createWindow(`file://${offlinePath}`);
     }
@@ -244,3 +269,26 @@ app.on('before-quit', () => {
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('notify', (_, msg) => new Notification({ title: 'GemSuite', body: msg }).show());
 ipcMain.on('restart-app', () => { app.relaunch(); app.exit(0); });
+
+ipcMain.on('network-status-change', (_, status: 'online' | 'offline') => {
+  log(`Network status changed: ${status}`);
+  if (status === 'offline') {
+    const offlinePath = getAssetPath('offline.html');
+    if (mainWindow) mainWindow.loadURL(`file://${offlinePath}`);
+  } else {
+    if (currentPort && mainWindow) {
+      mainWindow.loadURL(`http://localhost:${currentPort}`);
+    }
+  }
+});
+
+ipcMain.handle('check-network', async () => {
+  return await checkInternet();
+});
+
+ipcMain.on('continue-to-local', () => {
+  if (currentPort && mainWindow) {
+    mainWindow.loadURL(`http://localhost:${currentPort}`);
+  }
+});
+

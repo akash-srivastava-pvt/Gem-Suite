@@ -6,6 +6,7 @@ export const ProfileApp = () => {
     const [status, setStatus] = useState<UserStatus | null>(null);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [deleting, setDeleting] = useState(false);
+    const [updatingVersion, setUpdatingVersion] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -43,6 +44,20 @@ export const ProfileApp = () => {
         }
     };
 
+    const handleGeminiVersionChange = async (version: '2' | '3') => {
+        if (status?.geminiVersion === version) return;
+        
+        setUpdatingVersion(true);
+        try {
+            await userService.updateGeminiVersion(version);
+            await fetchData();
+        } catch (err) {
+            alert("Failed to update Gemini version");
+        } finally {
+            setUpdatingVersion(false);
+        }
+    };
+
     if (!status) return <div style={{ padding: '40px', color: 'var(--text-secondary)' }}>Gathering profile records...</div>;
 
     if (!status.agreed) {
@@ -68,6 +83,42 @@ export const ProfileApp = () => {
                             <div style={styles.infoItem}>
                                 <span style={styles.label}>Authorisation Status</span>
                                 <span style={{ ...styles.value, color: 'var(--success)' }}>Verified & Active ✅</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="card" style={styles.section}>
+                        <h2 style={styles.sectionTitle}>AI Model Preference</h2>
+                        <div style={styles.infoRow}>
+                            <div style={styles.infoItem}>
+                                <span style={styles.label}>Gemini Version</span>
+                                <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                                    <button
+                                        className={status.geminiVersion === '2' ? 'primary-btn' : 'secondary-btn'}
+                                        onClick={() => handleGeminiVersionChange('2')}
+                                        disabled={updatingVersion}
+                                        style={{
+                                            opacity: updatingVersion ? 0.6 : 1,
+                                            cursor: updatingVersion ? 'not-allowed' : 'pointer'
+                                        }}
+                                    >
+                                        Gemini 2.0
+                                    </button>
+                                    <button
+                                        className={status.geminiVersion === '3' ? 'primary-btn' : 'secondary-btn'}
+                                        onClick={() => handleGeminiVersionChange('3')}
+                                        disabled={updatingVersion}
+                                        style={{
+                                            opacity: updatingVersion ? 0.6 : 1,
+                                            cursor: updatingVersion ? 'not-allowed' : 'pointer'
+                                        }}
+                                    >
+                                        Gemini 3.0
+                                    </button>
+                                </div>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                                    Select which Gemini model version to use for AI features
+                                </p>
                             </div>
                         </div>
                     </section>

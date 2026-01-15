@@ -1,14 +1,15 @@
 import { TextEditorInput } from "@gem/shared";
+import { aiCache } from "../../../utils/storage.js";
 
 const API_BASE = "/api/v1/text-editor";
-
-const apiCache = new Map<string, string>();
+const APP_NAME = "text-editor";
 
 export const textEditorService = {
   async query(data: TextEditorInput, signal?: AbortSignal): Promise<string> {
-    const cacheKey = JSON.stringify(data);
-    if (apiCache.has(cacheKey)) {
-      return apiCache.get(cacheKey)!;
+    // Check cache first
+    const cached = aiCache.get<string>(APP_NAME, data);
+    if (cached) {
+      return cached;
     }
 
     const response = await fetch(API_BASE, {
@@ -27,7 +28,7 @@ export const textEditorService = {
     const result = typeof res.data === "string" ? res.data : "";
 
     if (result) {
-      apiCache.set(cacheKey, result);
+      aiCache.set(APP_NAME, data, result);
     }
 
     return result;

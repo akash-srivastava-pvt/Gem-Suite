@@ -9,10 +9,25 @@ export const UserController = {
             return res.json({
                 agreed: user ? !!user.personalAgreement : false,
                 name: user?.name,
+                geminiVersion: user?.geminiVersion || '2',
             });
         } catch (error) {
             console.error('[USER][GET_STATUS]', error);
             return res.status(500).json({ error: 'Failed to get user status' });
+        }
+    },
+
+    updateGeminiVersion: (req: Request, res: Response) => {
+        try {
+            const { version } = req.body;
+            if (version !== '2' && version !== '3') {
+                return res.status(400).json({ error: 'Version must be "2" or "3"' });
+            }
+            UserModel.updateGeminiVersion(version);
+            return res.json({ success: true, geminiVersion: version });
+        } catch (error) {
+            console.error('[USER][UPDATE_GEMINI_VERSION]', error);
+            return res.status(500).json({ error: 'Failed to update Gemini version' });
         }
     },
 

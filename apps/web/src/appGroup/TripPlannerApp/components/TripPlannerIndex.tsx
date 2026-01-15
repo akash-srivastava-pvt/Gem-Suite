@@ -3,6 +3,10 @@ import { TripPlanForm } from './TripPlanForm.jsx';
 import { TripPlannerApp } from './TripPlannerApp.jsx';
 import { tripService } from '../services/tripService.js';
 import ResizableLayout from '../../../components/ResizableLayout.js';
+import { aiCache } from '../../../utils/storage.js';
+import { buildTripPayload } from '../utils/buildTripPayload.js';
+
+const APP_NAME = "trip-planner";
 
 export const TripPlannerIndex = () => {
   const [tripData, setTripData] = useState<any>(null);
@@ -13,7 +17,22 @@ export const TripPlannerIndex = () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // Check cache first
+      const tripPayload = buildTripPayload(payload);
+      const cached = aiCache.get<any>(APP_NAME, tripPayload);
+      
+      if (cached) {
+        setTripData(cached);
+        setLoading(false);
+        return;
+      }
+
       const response = await tripService.query(payload);
+      
+      // Cache the result
+      aiCache.set(APP_NAME, tripPayload, response);
+      
       setTripData(response);
     } catch (err: any) {
       console.error(err);

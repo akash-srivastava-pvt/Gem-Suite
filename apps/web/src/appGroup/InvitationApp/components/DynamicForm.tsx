@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ThemeFormConfig } from "../config/invitationFormConfig.js";
 import { theme } from "../../../theme.js";
+import { formStorage } from "../../../utils/storage.js";
+
+const APP_NAME = "invitation";
 
 export function DynamicForm({
     config,
@@ -11,7 +14,17 @@ export function DynamicForm({
     onSubmit: (data: any) => void;
     onBack?: () => void;
 }) {
-    const [form, setForm] = useState<any>(config.defaultValues);
+    // Load persisted form data for this theme
+    const persistedForm = formStorage.load<any>(`${APP_NAME}:${config.defaultValues.theme}`, config.defaultValues);
+    const [form, setForm] = useState<any>(persistedForm);
+
+    // Persist form changes
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            formStorage.save(`${APP_NAME}:${config.defaultValues.theme}`, form);
+        }, 500); // Debounce saves
+        return () => clearTimeout(timer);
+    }, [form, config.defaultValues.theme]);
 
     const inputStyle = {
         width: '100%',

@@ -89,6 +89,18 @@ class DatabaseModel {
         console.log(`Loading existing database from: ${this.dbPath}`);
         const diskBuffer = fs.readFileSync(this.dbPath);
         this.db = new SQL.Database(diskBuffer);
+        
+        // Migration: Add geminiVersion column if it doesn't exist
+        try {
+          this.db.run(`ALTER TABLE users ADD COLUMN geminiVersion TEXT DEFAULT '2'`);
+          console.log('✅ Added geminiVersion column to users table');
+          this.saveToDisk();
+        } catch (err: any) {
+          // Column already exists, ignore error
+          if (!err.message?.includes('duplicate column')) {
+            console.warn('Migration note:', err.message);
+          }
+        }
       } else {
         console.log(`Creating new database at: ${this.dbPath}`);
         this.db = new SQL.Database();
@@ -96,7 +108,8 @@ class DatabaseModel {
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
           name TEXT,
-          personalAgreement BOOLEAN
+          personalAgreement BOOLEAN,
+          geminiVersion TEXT DEFAULT '2'
         )`);
 
         this.db.run(`CREATE TABLE IF NOT EXISTS activate (

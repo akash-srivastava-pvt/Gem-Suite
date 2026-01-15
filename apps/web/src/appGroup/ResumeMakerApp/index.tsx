@@ -7,6 +7,7 @@ import { PremiumModern } from './templates/PremiumModern.js';
 import { StandardDocument } from './templates/StandardDocument.js';
 import ResizableLayout from '../../components/ResizableLayout.js';
 import { useShell } from '../../context/ShellContext.js';
+import { aiCache } from '../../utils/storage.js';
 
 interface KeyValue {
     key: string;
@@ -130,6 +131,26 @@ export const ResumeMakerApp: React.FC = () => {
     };
 
     const generate = async (type: 'generate-ats' | 'generate-cover-letter' | 'generate-sop') => {
+        // Check cache first
+        const cacheKey = { type, data };
+        const appName = `resume-${type}`;
+        const cached = aiCache.get<any>(appName, cacheKey);
+        if (cached) {
+            let key: OutputTab = 'ats';
+            if (type === 'generate-ats') {
+                key = 'ats';
+            } else if (type === 'generate-cover-letter') {
+                key = 'coverLetter';
+            } else if (type === 'generate-sop') {
+                key = 'sop';
+            }
+            setGenerated(prev => ({ ...prev, [key]: cached }));
+            setActiveTab(key);
+            setPreviewMode(true);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await fetch(`/api/v1/resume/${type}`, {
@@ -138,6 +159,9 @@ export const ResumeMakerApp: React.FC = () => {
                 body: JSON.stringify(data),
             });
             const result = await res.json();
+
+            // Cache the result
+            aiCache.set(appName, cacheKey, result);
 
             let key: OutputTab = 'ats';
 
@@ -313,31 +337,77 @@ export const ResumeMakerApp: React.FC = () => {
                                     </select>
                                 </div>
                             )}
-                            <button className="secondary-btn" onClick={() => setPreviewMode(!previewMode)}>
-                                {previewMode ? 'View Raw JSON' : 'Show Preview'}
+                            <button 
+                                className="secondary-btn" 
+                                onClick={() => setPreviewMode(!previewMode)}
+                                style={{ marginLeft: 'auto' }}
+                            >
+                                {previewMode ? (activeTab === 'ats' ? 'Edit JSON' : 'Edit Text') : 'Show Preview'}
                             </button>
                             <button onClick={() => activeTab === 'ats' ? setShowTemplateModal(true) : downloadPDF()} className="primary-btn">Download PDF</button>
                         </div>
-                        <div className="editor-area" style={{ border: 'none', background: 'transparent' }}>
+                        <div className="editor-area" style={{ border: 'none', background: 'transparent', height: '100%', display: 'flex', flexDirection: 'column' }}>
                             {previewMode ? (
-                                <div className="template-preview-wrapper" style={{ background: 'white', padding: '0.75in', overflowY: 'auto' }}>
-                                    {activeTab === 'ats' ? (
-                                        selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
-                                    ) : (
-                                        <StandardDocument data={generated[activeTab]} title={getDocTitle()} />
-                                    )}
-                                </div>
+                                <>
+                                    <div className="template-preview-wrapper" style={{ 
+                                        background: 'white', 
+                                        padding: '0.75in', 
+                                        overflowY: 'auto',
+                                        flex: 1,
+                                        minHeight: 0
+                                    }}>
+                                        {activeTab === 'ats' ? (
+                                            selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
+                                        ) : (
+                                            <StandardDocument data={generated[activeTab]} title={getDocTitle()} />
+                                        )}
+                                    </div>
+                                    {/* Hidden element for PDF rendering */}
+                                    <div id="pdf-render-hidden" style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '8.5in', background: 'white', padding: '0.75in' }}>
+                                        {activeTab === 'ats' ? (
+                                            selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
+                                        ) : (
+                                            <StandardDocument data={generated[activeTab]} title={getDocTitle()} />
+                                        )}
+                                    </div>
+                                </>
                             ) : (
                                 <textarea
-                                    value={JSON.stringify(generated[activeTab], null, 2)}
+                                    value={activeTab === 'ats' 
+                                        ? JSON.stringify(generated[activeTab], null, 2)
+                                        : (generated[activeTab]?.content || '')
+                                    }
                                     onChange={(e) => {
-                                        try {
-                                            const val = JSON.parse(e.target.value);
-                                            setGenerated(prev => ({ ...prev, [activeTab]: val }));
-                                        } catch (err) { }
+                                        if (activeTab === 'ats') {
+                                            try {
+                                                const val = JSON.parse(e.target.value);
+                                                setGenerated(prev => ({ ...prev, [activeTab]: val }));
+                                            } catch (err) {
+                                                // Allow invalid JSON while typing
+                                            }
+                                        } else {
+                                            // For cover letter and SOP, update content directly
+                                            setGenerated(prev => ({ 
+                                                ...prev, 
+                                                [activeTab]: { ...prev[activeTab], content: e.target.value } 
+                                            }));
+                                        }
                                     }}
                                     className="output-editor card"
-                                    style={{ margin: '0 auto', maxWidth: '800px' }}
+                                    style={{ 
+                                        width: '100%',
+                                        flex: 1,
+                                        minHeight: 0,
+                                        padding: '20px',
+                                        fontSize: activeTab === 'ats' ? '13px' : '14px',
+                                        fontFamily: activeTab === 'ats' ? 'monospace' : 'inherit',
+                                        lineHeight: activeTab === 'ats' ? '1.5' : '1.6',
+                                        resize: 'none',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 'var(--radius-md)',
+                                        outline: 'none'
+                                    }}
+                                    placeholder={activeTab === 'ats' ? 'Edit JSON structure...' : 'Edit your text here...'}
                                 />
                             )}
                         </div>

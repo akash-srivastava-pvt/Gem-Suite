@@ -1,6 +1,5 @@
 import { TripPromptInput } from "@gem/shared";
 
-
 export function buildTripPlannerPrompt({
   places,
   startDate,
@@ -10,81 +9,85 @@ export function buildTripPlannerPrompt({
   endLocation,
   tripType,
 }: TripPromptInput): string {
-  return `
-You are an expert travel planner and route optimizer specializing in Indian geography.
+  const placesList = places.map((p) => `- ${p}`).join("\\n");
 
----
+  const resolvedEndPoint =
+    tripType === "roundtrip" ? startLocation : endLocation;
 
-### TRIP PARAMETERS
-- **Start Location:** ${startLocation}
-- **End Location:** ${endLocation}
-- **Trip Type:** ${tripType === 'roundtrip' ? 'Round Trip (Return to Start Location)' : 'One Way (End at Destination)'}
-- **Places to Visit (attraction/city/state):**
-${places.map(p => `- ${p}`).join("\n")}
+  const resolvedTripType =
+    tripType === "roundtrip"
+      ? "Round Trip (Return to Start Location)"
+      : "One Way (End at Destination)";
 
-- **Dates:** ${startDate} to ${endDate}
-- **Group Size:** ${peopleCount} People
+  return (
+`You are an expert travel planner and route optimizer specializing in Indian geography.
 
----
+TRIP PARAMETERS
+Start Location: ${String(startLocation)}
+End Location: ${String(endLocation)}
+Trip Type: ${resolvedTripType}
+Places to Visit (attraction or city or state):
+${placesList}
+Dates: ${String(startDate)} to ${String(endDate)}
+Group Size: ${Number(peopleCount)} People
 
-### CORE PLANNING RULES
-1. **Route Logic:** - Start the journey from ${startLocation}.
-   - If Trip Type is "roundtrip", the final day must involve traveling back to ${startLocation} from the last visited city.
-   - If Trip Type is "oneway", the journey ends at ${endLocation}.
-2. **Grouping:** Group attractions by city/state to avoid backtracking.
-3. **Transport Assumptions:** - Use trains for <700km and flights for >700km distances from the Start Location and between cities.
-   - Use INR (₹) for all estimates based on current Indian budget-to-mid-range standards.
-4. **Efficiency:** Optimize the sequence of cities based on geographical proximity to minimize total travel time.
+CORE PLANNING RULES
+1. Route Logic:
+- Start the journey from ${String(startLocation)}.
+- If trip type is roundtrip, the final day must involve traveling back to ${String(startLocation)}.
+- If trip type is oneway, the journey ends at ${String(endLocation)}.
+2. Group attractions by city or state to avoid backtracking.
+3. Transport assumptions:
+- Use trains for distances under 700 km.
+- Use flights for distances over 700 km.
+- Use INR currency for all cost estimates.
+4. Optimize city sequence based on geographic proximity.
 
----
+DAILY ITINERARY REQUIREMENTS
+Each day must include city, state, attractions, travel mode, duration, cost, stay type, food type, and daily total cost.
 
-### DAILY ITINERARY & COST REQUIREMENTS
-Each day must include city/state, attractions, travel mode/duration/cost, stay type/cost, and food style/cost.
-
----
-
-### OUTPUT FORMAT (STRICT JSON ONLY)
-Return ONLY valid JSON matching this structure:
+OUTPUT FORMAT
+Return ONLY valid JSON.
+Do not include markdown, code blocks, backticks, or explanations.
+Start with { and end with }.
 
 {
   "summary": {
-    "startPoint": "${startLocation}",
-    "endPoint": "${tripType === 'roundtrip' ? startLocation : endLocation}",
-    "tripType": "${tripType}",
-    "totalDays": number,
-    "citiesCovered": string[],
-    "routeOptimized": boolean
+    "startPoint": "${String(startLocation)}",
+    "endPoint": "${String(resolvedEndPoint)}",
+    "tripType": "${String(tripType)}",
+    "totalDays": 0,
+    "citiesCovered": [],
+    "routeOptimized": true
   },
   "itinerary": [
     {
-      "day": number,
-      "city": string,
-      "state": string,
-      "attractions": string[],
+      "day": 1,
+      "city": "",
+      "state": "",
+      "attractions": [],
       "travel": {
-        "mode": string,
-        "from": string,
-        "to": string,
-        "duration": string,
-        "cost": number
+        "mode": "",
+        "from": "",
+        "to": "",
+        "duration": "",
+        "cost": 0
       },
-      "stay": { "type": string, "cost": number },
-      "food": { "type": string, "cost": number },
-      "dailyTotalCost": number
+      "stay": { "type": "", "cost": 0 },
+      "food": { "type": "", "cost": 0 },
+      "dailyTotalCost": 0
     }
   ],
   "costBreakdown": {
-    "interCityTravel": number,
-    "localTransportAndSightseeing": number,
-    "stay": number,
-    "food": number,
-    "totalTripCost": number,
-    "costPerPerson": number
+    "interCityTravel": 0,
+    "localTransportAndSightseeing": 0,
+    "stay": 0,
+    "food": 0,
+    "totalTripCost": 0,
+    "costPerPerson": 0
   },
-  "assumptions": string[],
-  "tips": string[]
-}
-
-Return ONLY JSON. No markdown backticks. No conversational text.
-`;
+  "assumptions": [],
+  "tips": []
+}`
+  );
 }

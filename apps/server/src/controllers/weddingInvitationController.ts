@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
-import { callGemini } from '../proxies/gemini2img.js';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey } from '../utility/helper.js';
+import { getApiKey, callGeminiImageWithUserPreference } from '../utility/helper.js';
 import { buildInvitationPrompt } from '../agents/wedding.invitation.agent.js';
 import { LoggerModel } from '../models/loggerModel.js';
 
@@ -70,7 +69,7 @@ export async function WeddingInvitationController(
         // ─────────────────────────────────────────
         // 4. Call Gemini (IMAGE)
         // ─────────────────────────────────────────
-        const geminiResponse = await callGemini(apiKey, prompt);
+        const geminiResponse = await callGeminiImageWithUserPreference(apiKey, prompt);
 
         LoggerModel.log(`Gemini API called for wedding invitation generation: ${groomName} & ${brideName}`);
 

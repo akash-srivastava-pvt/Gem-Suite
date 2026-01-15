@@ -5,6 +5,13 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -21,6 +28,131 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+
+// src/utility/jsonParser.ts
+var jsonParser_exports = {};
+__export(jsonParser_exports, {
+  extractTextContent: () => extractTextContent,
+  parseAIJSON: () => parseAIJSON
+});
+function parseAIJSON(response) {
+  if (!response || typeof response !== "string") {
+    throw new Error("Invalid response: empty or not a string");
+  }
+  let cleaned = response.trim();
+  cleaned = cleaned.replace(/^```json\s*/i, "");
+  cleaned = cleaned.replace(/^```\s*/i, "");
+  cleaned = cleaned.replace(/\s*```$/i, "");
+  cleaned = cleaned.trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  let jsonStart = -1;
+  let jsonEnd = -1;
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    jsonStart = firstBrace;
+    jsonEnd = lastBrace + 1;
+  } else if (firstBracket !== -1) {
+    jsonStart = firstBracket;
+    jsonEnd = lastBracket + 1;
+  }
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("No valid JSON structure found in response");
+  }
+  let jsonString = cleaned.substring(jsonStart, jsonEnd);
+  jsonString = jsonString.replace(/,(\s*[}\]])/g, "$1");
+  jsonString = jsonString.replace(/("(?:[^"\\]|\\.)*")/g, (match) => {
+    if (match.includes("\n") && !match.includes("\\n")) {
+      return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+    }
+    return match;
+  });
+  jsonString = jsonString.replace(/\/\/.*$/gm, "");
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    try {
+      const fixed = fixUnterminatedString(jsonString);
+      return JSON.parse(fixed);
+    } catch (secondError) {
+      console.error("JSON Parse Error:", {
+        original: response.substring(0, 200),
+        cleaned: jsonString.substring(0, 200),
+        error: error.message,
+        position: error.message.match(/position (\d+)/)?.[1]
+      });
+      throw new Error(`Failed to parse JSON: ${error.message}. Response preview: ${jsonString.substring(0, 100)}...`);
+    }
+  }
+}
+function fixUnterminatedString(json) {
+  let fixed = json;
+  let inString = false;
+  let escapeNext = false;
+  let stringStart = -1;
+  for (let i = 0; i < fixed.length; i++) {
+    const char = fixed[i];
+    const prevChar = i > 0 ? fixed[i - 1] : "";
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"' && prevChar !== "\\") {
+      if (!inString) {
+        inString = true;
+        stringStart = i;
+      } else {
+        inString = false;
+        stringStart = -1;
+      }
+    }
+    if (i === fixed.length - 1 && inString && stringStart !== -1) {
+      const beforeString = fixed.substring(0, stringStart);
+      const lastColon = beforeString.lastIndexOf(":");
+      if (lastColon !== -1) {
+        fixed = fixed + '"';
+        break;
+      }
+    }
+  }
+  return fixed;
+}
+function extractTextContent(response, fieldName = "content") {
+  try {
+    const parsed = parseAIJSON(response);
+    if (parsed[fieldName]) {
+      return parsed[fieldName];
+    }
+    if (parsed.content) {
+      return parsed.content;
+    }
+    if (parsed.text) {
+      return parsed.text;
+    }
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+    const stringified = JSON.stringify(parsed, null, 2);
+    return stringified;
+  } catch (error) {
+    let cleaned = response.replace(/```json|```/g, "").trim();
+    const textMatch = cleaned.match(/"content"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+    if (textMatch) {
+      return textMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+    }
+    return cleaned;
+  }
+}
+var init_jsonParser = __esm({
+  "src/utility/jsonParser.ts"() {
+    "use strict";
+  }
+});
 
 // src/server.ts
 var import_express8 = __toESM(require("express"), 1);
@@ -83,13 +215,23 @@ var DatabaseModel = class {
         console.log(`Loading existing database from: ${this.dbPath}`);
         const diskBuffer = import_fs.default.readFileSync(this.dbPath);
         this.db = new SQL.Database(diskBuffer);
+        try {
+          this.db.run(`ALTER TABLE users ADD COLUMN geminiVersion TEXT DEFAULT '2'`);
+          console.log("\u2705 Added geminiVersion column to users table");
+          this.saveToDisk();
+        } catch (err) {
+          if (!err.message?.includes("duplicate column")) {
+            console.warn("Migration note:", err.message);
+          }
+        }
       } else {
         console.log(`Creating new database at: ${this.dbPath}`);
         this.db = new SQL.Database();
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
           name TEXT,
-          personalAgreement BOOLEAN
+          personalAgreement BOOLEAN,
+          geminiVersion TEXT DEFAULT '2'
         )`);
         this.db.run(`CREATE TABLE IF NOT EXISTS activate (
           id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -230,6 +372,374 @@ async function decrypt(payload) {
   }
 }
 
+// src/models/userModel.ts
+var UserModel = {
+  getUser: () => {
+    const rows = db.query("SELECT * FROM users LIMIT 1");
+    if (rows.length > 0) {
+      const user = rows[0];
+      if (!user.geminiVersion) {
+        user.geminiVersion = "2";
+      }
+      return user;
+    }
+    return null;
+  },
+  createUser: (name) => {
+    db.execute(
+      "INSERT INTO users (name, personalAgreement, geminiVersion) VALUES (?, ?, ?)",
+      [name, true, "2"]
+    );
+    db.execute("INSERT INTO logger (event) VALUES (?)", [`User agreement signed by ${name}`]);
+  },
+  updateGeminiVersion: (version) => {
+    const user = UserModel.getUser();
+    if (user) {
+      db.execute(
+        "UPDATE users SET geminiVersion = ? WHERE id = ?",
+        [version, user.id]
+      );
+    }
+  },
+  getGeminiVersion: () => {
+    const user = UserModel.getUser();
+    return user?.geminiVersion || "2";
+  },
+  deleteData: () => {
+    db.execute("DELETE FROM users");
+    db.execute("DELETE FROM activate");
+    db.execute("DELETE FROM resume");
+    db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
+  },
+  hasAgreed: () => {
+    const user = UserModel.getUser();
+    return user ? !!user.personalAgreement : false;
+  }
+};
+
+// src/proxies/gemini2.ts
+var GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+var REQUEST_TIMEOUT = 3e4;
+var MAX_RETRIES = 2;
+async function callGemini(apiKey, prompt) {
+  if (!apiKey || !prompt) {
+    throw new Error("API key and prompt are required");
+  }
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    try {
+      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+          // x-goog-api-key can also be used here, but query param is most reliable for fetch
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 7200
+          }
+        }),
+        signal: controller.signal
+        // Connect timeout signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const status = response.status;
+        const errorData = await response.json().catch(() => ({}));
+        if (status === 401 || status === 403) {
+          throw new Error("Invalid Gemini API key");
+        }
+        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES) {
+          const delay = 1e3 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(
+          errorData.error?.message || `Gemini request failed (${status})`
+        );
+      }
+      const resData = await response.json();
+      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Empty response from Gemini");
+      }
+      return { data: text };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        if (attempt < MAX_RETRIES) {
+          const delay = 1e3 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error("Gemini request timed out");
+      }
+      if (attempt < MAX_RETRIES) {
+        const delay = 1e3 * (attempt + 1);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Gemini request failed after retries");
+}
+
+// src/proxies/gemini3.ts
+var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent";
+var REQUEST_TIMEOUT2 = 45e3;
+var MAX_TOKENS = 7200;
+async function callGemini2(apiKey, prompt, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT2);
+    try {
+      const response = await fetch(`${GEMINI_URL2}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+          // Note: Gemini usually prefers key as a query param, 
+          // but some versions support x-goog-api-key header.
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: MAX_TOKENS,
+            temperature: 0.3
+          }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const status = response.status;
+        const errorBody = await response.json().catch(() => ({}));
+        if (status === 401 || status === 403) {
+          throw new Error("Invalid Gemini API key");
+        }
+        if (status === 429 && attempt < retries) {
+          const retryAfter = Number(response.headers.get("retry-after")) || 5;
+          const backoffMs = retryAfter * 1e3 + Math.random() * 1e3;
+          console.warn(`[Gemini] 429 received. Waiting ${backoffMs}ms before retry`);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        if (status >= 400 && status < 500) {
+          throw new Error(errorBody.error?.message || `Gemini client error (${status})`);
+        }
+        if (attempt < retries) {
+          const backoffMs = 3e3 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        throw new Error(`Gemini request failed with status ${status}`);
+      }
+      const resData = await response.json();
+      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("Empty Gemini response");
+      return { data: text };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        if (attempt < retries) {
+          continue;
+        }
+        throw new Error("Gemini request timed out");
+      }
+      if (attempt < retries) {
+        const backoffMs = 3e3 * (attempt + 1);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Unreachable Gemini client state");
+}
+
+// src/proxies/gemini2img.ts
+var GEMINI_URL3 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+var REQUEST_TIMEOUT3 = 3e4;
+var MAX_RETRIES2 = 2;
+async function callGemini3(apiKey, prompt) {
+  if (!apiKey || !prompt) {
+    throw new Error("API key and prompt are required");
+  }
+  for (let attempt = 0; attempt <= MAX_RETRIES2; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT3
+    );
+    try {
+      const response = await fetch(`${GEMINI_URL3}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"]
+          }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const status = response.status;
+        const errorText = await response.text();
+        if (status === 401 || status === 403) {
+          throw new Error("Invalid Gemini API key");
+        }
+        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES2) {
+          await new Promise(
+            (r) => setTimeout(r, 1e3 * (attempt + 1))
+          );
+          continue;
+        }
+        throw new Error(
+          `Gemini request failed (${status}): ${errorText}`
+        );
+      }
+      const resData = await response.json();
+      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
+        (p) => p.inlineData
+      );
+      if (!imagePart?.inlineData?.data) {
+        throw new Error("No image returned from Gemini");
+      }
+      return {
+        image: {
+          mimeType: imagePart.inlineData.mimeType,
+          base64: imagePart.inlineData.data
+        }
+      };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        if (attempt < MAX_RETRIES2) {
+          await new Promise(
+            (r) => setTimeout(r, 1e3 * (attempt + 1))
+          );
+          continue;
+        }
+        throw new Error("Gemini request timed out");
+      }
+      if (attempt < MAX_RETRIES2) {
+        await new Promise(
+          (r) => setTimeout(r, 1e3 * (attempt + 1))
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Gemini request failed after retries");
+}
+
+// src/proxies/gemini3img.ts
+var GEMINI_URL4 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+var REQUEST_TIMEOUT4 = 45e3;
+var MAX_RETRIES3 = 2;
+async function callGemini4(apiKey, prompt) {
+  if (!apiKey || !prompt) {
+    throw new Error("API key and prompt are required");
+  }
+  for (let attempt = 0; attempt <= MAX_RETRIES3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT4
+    );
+    try {
+      const response = await fetch(`${GEMINI_URL4}?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"]
+          }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const status = response.status;
+        const errorText = await response.text();
+        if (status === 401 || status === 403) {
+          throw new Error("Invalid Gemini API key");
+        }
+        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES3) {
+          const backoffMs = 3e3 * (attempt + 1);
+          await new Promise(
+            (r) => setTimeout(r, backoffMs)
+          );
+          continue;
+        }
+        throw new Error(
+          `Gemini request failed (${status}): ${errorText}`
+        );
+      }
+      const resData = await response.json();
+      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
+        (p) => p.inlineData
+      );
+      if (!imagePart?.inlineData?.data) {
+        throw new Error("No image returned from Gemini");
+      }
+      return {
+        image: {
+          mimeType: imagePart.inlineData.mimeType,
+          base64: imagePart.inlineData.data
+        }
+      };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        if (attempt < MAX_RETRIES3) {
+          const backoffMs = 3e3 * (attempt + 1);
+          await new Promise(
+            (r) => setTimeout(r, backoffMs)
+          );
+          continue;
+        }
+        throw new Error("Gemini request timed out");
+      }
+      if (attempt < MAX_RETRIES3) {
+        const backoffMs = 3e3 * (attempt + 1);
+        await new Promise(
+          (r) => setTimeout(r, backoffMs)
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Gemini request failed after retries");
+}
+
 // src/utility/helper.ts
 var validateGeminiApiKey = async (apiKey, retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -265,6 +775,20 @@ async function getApiKey() {
   const key = activate[0].apiKey;
   const decryptedKey = await decrypt(key);
   return decryptedKey;
+}
+async function callGeminiWithUserPreference(apiKey, prompt) {
+  const version = UserModel.getGeminiVersion();
+  if (version === "3") {
+    return callGemini2(apiKey, prompt);
+  }
+  return callGemini(apiKey, prompt);
+}
+async function callGeminiImageWithUserPreference(apiKey, prompt) {
+  const version = UserModel.getGeminiVersion();
+  if (version === "3") {
+    return callGemini4(apiKey, prompt);
+  }
+  return callGemini3(apiKey, prompt);
 }
 
 // src/models/loggerModel.ts
@@ -345,82 +869,6 @@ var activateRoutes_default = router;
 // src/routes/tripRoutes.ts
 var import_express2 = require("express");
 
-// src/proxies/gemini2.ts
-var GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-var REQUEST_TIMEOUT = 3e4;
-var MAX_RETRIES = 2;
-async function callGemini(apiKey, prompt) {
-  if (!apiKey || !prompt) {
-    throw new Error("API key and prompt are required");
-  }
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-    try {
-      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-          // x-goog-api-key can also be used here, but query param is most reliable for fetch
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 7200
-          }
-        }),
-        signal: controller.signal
-        // Connect timeout signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorData = await response.json().catch(() => ({}));
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES) {
-          const delay = 1e3 * (attempt + 1);
-          await new Promise((r) => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(
-          errorData.error?.message || `Gemini request failed (${status})`
-        );
-      }
-      const resData = await response.json();
-      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error("Empty response from Gemini");
-      }
-      return { data: text };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < MAX_RETRIES) {
-          const delay = 1e3 * (attempt + 1);
-          await new Promise((r) => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < MAX_RETRIES) {
-        const delay = 1e3 * (attempt + 1);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Gemini request failed after retries");
-}
-
 // src/utility/errors.ts
 var AppError = class _AppError extends Error {
   constructor(statusCode = 500, message = "Internal Server Error", isOperational = true) {
@@ -447,83 +895,78 @@ function buildTripPlannerPrompt({
   endLocation,
   tripType
 }) {
-  return `
-You are an expert travel planner and route optimizer specializing in Indian geography.
+  const placesList = places.map((p) => `- ${p}`).join("\\n");
+  const resolvedEndPoint = tripType === "roundtrip" ? startLocation : endLocation;
+  const resolvedTripType = tripType === "roundtrip" ? "Round Trip (Return to Start Location)" : "One Way (End at Destination)";
+  return `You are an expert travel planner and route optimizer specializing in Indian geography.
 
----
+TRIP PARAMETERS
+Start Location: ${String(startLocation)}
+End Location: ${String(endLocation)}
+Trip Type: ${resolvedTripType}
+Places to Visit (attraction or city or state):
+${placesList}
+Dates: ${String(startDate)} to ${String(endDate)}
+Group Size: ${Number(peopleCount)} People
 
-### TRIP PARAMETERS
-- **Start Location:** ${startLocation}
-- **End Location:** ${endLocation}
-- **Trip Type:** ${tripType === "roundtrip" ? "Round Trip (Return to Start Location)" : "One Way (End at Destination)"}
-- **Places to Visit (attraction/city/state):**
-${places.map((p) => `- ${p}`).join("\n")}
+CORE PLANNING RULES
+1. Route Logic:
+- Start the journey from ${String(startLocation)}.
+- If trip type is roundtrip, the final day must involve traveling back to ${String(startLocation)}.
+- If trip type is oneway, the journey ends at ${String(endLocation)}.
+2. Group attractions by city or state to avoid backtracking.
+3. Transport assumptions:
+- Use trains for distances under 700 km.
+- Use flights for distances over 700 km.
+- Use INR currency for all cost estimates.
+4. Optimize city sequence based on geographic proximity.
 
-- **Dates:** ${startDate} to ${endDate}
-- **Group Size:** ${peopleCount} People
+DAILY ITINERARY REQUIREMENTS
+Each day must include city, state, attractions, travel mode, duration, cost, stay type, food type, and daily total cost.
 
----
-
-### CORE PLANNING RULES
-1. **Route Logic:** - Start the journey from ${startLocation}.
-   - If Trip Type is "roundtrip", the final day must involve traveling back to ${startLocation} from the last visited city.
-   - If Trip Type is "oneway", the journey ends at ${endLocation}.
-2. **Grouping:** Group attractions by city/state to avoid backtracking.
-3. **Transport Assumptions:** - Use trains for <700km and flights for >700km distances from the Start Location and between cities.
-   - Use INR (\u20B9) for all estimates based on current Indian budget-to-mid-range standards.
-4. **Efficiency:** Optimize the sequence of cities based on geographical proximity to minimize total travel time.
-
----
-
-### DAILY ITINERARY & COST REQUIREMENTS
-Each day must include city/state, attractions, travel mode/duration/cost, stay type/cost, and food style/cost.
-
----
-
-### OUTPUT FORMAT (STRICT JSON ONLY)
-Return ONLY valid JSON matching this structure:
+OUTPUT FORMAT
+Return ONLY valid JSON.
+Do not include markdown, code blocks, backticks, or explanations.
+Start with { and end with }.
 
 {
   "summary": {
-    "startPoint": "${startLocation}",
-    "endPoint": "${tripType === "roundtrip" ? startLocation : endLocation}",
-    "tripType": "${tripType}",
-    "totalDays": number,
-    "citiesCovered": string[],
-    "routeOptimized": boolean
+    "startPoint": "${String(startLocation)}",
+    "endPoint": "${String(resolvedEndPoint)}",
+    "tripType": "${String(tripType)}",
+    "totalDays": 0,
+    "citiesCovered": [],
+    "routeOptimized": true
   },
   "itinerary": [
     {
-      "day": number,
-      "city": string,
-      "state": string,
-      "attractions": string[],
+      "day": 1,
+      "city": "",
+      "state": "",
+      "attractions": [],
       "travel": {
-        "mode": string,
-        "from": string,
-        "to": string,
-        "duration": string,
-        "cost": number
+        "mode": "",
+        "from": "",
+        "to": "",
+        "duration": "",
+        "cost": 0
       },
-      "stay": { "type": string, "cost": number },
-      "food": { "type": string, "cost": number },
-      "dailyTotalCost": number
+      "stay": { "type": "", "cost": 0 },
+      "food": { "type": "", "cost": 0 },
+      "dailyTotalCost": 0
     }
   ],
   "costBreakdown": {
-    "interCityTravel": number,
-    "localTransportAndSightseeing": number,
-    "stay": number,
-    "food": number,
-    "totalTripCost": number,
-    "costPerPerson": number
+    "interCityTravel": 0,
+    "localTransportAndSightseeing": 0,
+    "stay": 0,
+    "food": 0,
+    "totalTripCost": 0,
+    "costPerPerson": 0
   },
-  "assumptions": string[],
-  "tips": string[]
-}
-
-Return ONLY JSON. No markdown backticks. No conversational text.
-`;
+  "assumptions": [],
+  "tips": []
+}`;
 }
 
 // src/controllers/tripControler.ts
@@ -557,15 +1000,19 @@ async function TripController(req, res) {
       endLocation: data.endLocation,
       tripType: data.tripType
     });
-    const rawResponse = (await callGemini(apiKey, message)).data;
+    const rawResponse = (await callGeminiWithUserPreference(apiKey, message)).data;
     LoggerModel.log(`Gemini API called for trip planning: ${data.places.join(", ")}`);
-    const cleanedData = rawResponse.replace(/```json|```/g, "").trim();
     try {
-      const parsedData = JSON.parse(cleanedData);
+      const { parseAIJSON: parseAIJSON2 } = await Promise.resolve().then(() => (init_jsonParser(), jsonParser_exports));
+      const parsedData = parseAIJSON2(rawResponse);
       return res.status(200).json({ success: true, data: parsedData });
     } catch (parseError) {
-      console.error("AI JSON Parse Error:", cleanedData);
-      return res.status(502).json({ error: "AI generated an invalid response format" });
+      console.error("AI JSON Parse Error:", parseError.message);
+      console.error("Response preview:", rawResponse.substring(0, 500));
+      return res.status(502).json({
+        error: "AI generated an invalid response format",
+        details: parseError.message
+      });
     }
   } catch (error) {
     console.error("Trip planning failed:", error);
@@ -669,7 +1116,7 @@ async function TextEditorController(req, res) {
       language,
       tone
     });
-    const result = (await callGemini(apiKey, prompt)).data;
+    const result = (await callGeminiWithUserPreference(apiKey, prompt)).data;
     LoggerModel.log(`Gemini API called for text editing: ${intent}`);
     return res.status(200).json({
       success: true,
@@ -691,92 +1138,6 @@ var textEditorRoutes_default = router3;
 
 // src/routes/invitationRoutes.ts
 var import_express4 = require("express");
-
-// src/proxies/gemini2img.ts
-var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
-var REQUEST_TIMEOUT2 = 3e4;
-var MAX_RETRIES2 = 2;
-async function callGemini2(apiKey, prompt) {
-  if (!apiKey || !prompt) {
-    throw new Error("API key and prompt are required");
-  }
-  for (let attempt = 0; attempt <= MAX_RETRIES2; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT2
-    );
-    try {
-      const response = await fetch(`${GEMINI_URL2}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            responseModalities: ["IMAGE"]
-          }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorText = await response.text();
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES2) {
-          await new Promise(
-            (r) => setTimeout(r, 1e3 * (attempt + 1))
-          );
-          continue;
-        }
-        throw new Error(
-          `Gemini request failed (${status}): ${errorText}`
-        );
-      }
-      const resData = await response.json();
-      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
-        (p) => p.inlineData
-      );
-      if (!imagePart?.inlineData?.data) {
-        throw new Error("No image returned from Gemini");
-      }
-      return {
-        image: {
-          mimeType: imagePart.inlineData.mimeType,
-          base64: imagePart.inlineData.data
-        }
-      };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < MAX_RETRIES2) {
-          await new Promise(
-            (r) => setTimeout(r, 1e3 * (attempt + 1))
-          );
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < MAX_RETRIES2) {
-        await new Promise(
-          (r) => setTimeout(r, 1e3 * (attempt + 1))
-        );
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Gemini request failed after retries");
-}
 
 // src/agents/wedding.invitation.agent.ts
 function religionStyle(religion) {
@@ -865,7 +1226,7 @@ async function WeddingInvitationController(req, res) {
       familyDetails: data.familyDetails,
       rsvpContact: data.rsvpContact
     });
-    const geminiResponse = await callGemini2(apiKey, prompt);
+    const geminiResponse = await callGeminiImageWithUserPreference(apiKey, prompt);
     LoggerModel.log(`Gemini API called for wedding invitation generation: ${groomName} & ${brideName}`);
     if (!geminiResponse?.image?.base64) {
       return res.status(502).json({
@@ -903,31 +1264,6 @@ var invitationRoutes_default = router4;
 // src/routes/user.routes.ts
 var import_express5 = require("express");
 
-// src/models/userModel.ts
-var UserModel = {
-  getUser: () => {
-    const rows = db.query("SELECT * FROM users LIMIT 1");
-    return rows.length > 0 ? rows[0] : null;
-  },
-  createUser: (name) => {
-    db.execute(
-      "INSERT INTO users (name, personalAgreement) VALUES (?, ?)",
-      [name, true]
-    );
-    db.execute("INSERT INTO logger (event) VALUES (?)", [`User agreement signed by ${name}`]);
-  },
-  deleteData: () => {
-    db.execute("DELETE FROM users");
-    db.execute("DELETE FROM activate");
-    db.execute("DELETE FROM resume");
-    db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
-  },
-  hasAgreed: () => {
-    const user = UserModel.getUser();
-    return user ? !!user.personalAgreement : false;
-  }
-};
-
 // src/controllers/userController.ts
 var UserController = {
   getStatus: (req, res) => {
@@ -935,11 +1271,25 @@ var UserController = {
       const user = UserModel.getUser();
       return res.json({
         agreed: user ? !!user.personalAgreement : false,
-        name: user?.name
+        name: user?.name,
+        geminiVersion: user?.geminiVersion || "2"
       });
     } catch (error) {
       console.error("[USER][GET_STATUS]", error);
       return res.status(500).json({ error: "Failed to get user status" });
+    }
+  },
+  updateGeminiVersion: (req, res) => {
+    try {
+      const { version } = req.body;
+      if (version !== "2" && version !== "3") {
+        return res.status(400).json({ error: 'Version must be "2" or "3"' });
+      }
+      UserModel.updateGeminiVersion(version);
+      return res.json({ success: true, geminiVersion: version });
+    } catch (error) {
+      console.error("[USER][UPDATE_GEMINI_VERSION]", error);
+      return res.status(500).json({ error: "Failed to update Gemini version" });
     }
   },
   agree: (req, res) => {
@@ -987,6 +1337,7 @@ router5.get("/status", UserController.getStatus);
 router5.post("/agree", UserController.agree);
 router5.get("/logs", UserController.getLogs);
 router5.post("/delete-data", UserController.deleteData);
+router5.post("/gemini-version", UserController.updateGeminiVersion);
 var user_routes_default = router5;
 
 // src/routes/resumeRoutes.ts
@@ -1063,6 +1414,7 @@ var AnonymisationService = {
 };
 
 // src/services/GeminiTransformService.ts
+init_jsonParser();
 var GeminiTransformService = {
   async generateATSResume(anonymisedData) {
     const apiKey = await getApiKey();
@@ -1088,7 +1440,8 @@ var GeminiTransformService = {
       - Maintain neutral professional phrasing; neutralize any abusive or sensitive language.
 
       Output format:
-      Return STRICT JSON in the following structure (no markdown formatting):
+      IMPORTANT: Return ONLY valid JSON. Do NOT include markdown code blocks, backticks, or any formatting.
+      Return STRICT JSON in the following structure:
       {
         "name": "CANDIDATE_NAME",
         "summary": "...",
@@ -1118,8 +1471,8 @@ var GeminiTransformService = {
         ]
       }
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    return parseAIJSON(response.data);
   },
   async generateCoverLetter(anonymisedData) {
     const apiKey = await getApiKey();
@@ -1138,10 +1491,12 @@ var GeminiTransformService = {
       - Length: 3\u20134 concise paragraphs.
 
       Output format:
-      Return a JSON object: {"content": "the cover letter text"} (no markdown).
+      Return a JSON object: {"content": "the cover letter text"} (no markdown, no code blocks).
+      The content should be plain text with proper paragraph breaks.
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const textContent = extractTextContent(response.data, "content");
+    return { content: textContent };
   },
   async generateSOP(anonymisedData) {
     const apiKey = await getApiKey();
@@ -1161,10 +1516,12 @@ var GeminiTransformService = {
       - Length: 600\u2013800 words. Structured with logical paragraph flow.
 
       Output format:
-      Return a JSON object: {"content": "the SOP text"} (no markdown).
+      Return a JSON object: {"content": "the SOP text"} (no markdown, no code blocks).
+      The content should be plain text with proper paragraph breaks.
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const textContent = extractTextContent(response.data, "content");
+    return { content: textContent };
   }
 };
 

@@ -1,24 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CityAttractions, CitySelection } from './CityAttractions.js';
+import { formStorage } from '../../../utils/storage.js';
+
+const APP_NAME = "trip-planner";
+
+const defaultFormData = {
+  tripType: 'roundtrip',
+  startLocation: '',
+  endLocation: '',
+  startDate: '',
+  endDate: '',
+  peopleCount: 1,
+  cities: [] as CitySelection[]
+};
 
 export const TripPlanForm = ({ onSubmit, loading }: any) => {
-  const [input, setInput] = useState<{
-    tripType: string;
-    startLocation: string;
-    endLocation: string;
-    startDate: string;
-    endDate: string;
-    peopleCount: number;
-    cities: CitySelection[];
-  }>({
-    tripType: 'roundtrip',
-    startLocation: '',
-    endLocation: '',
-    startDate: '',
-    endDate: '',
-    peopleCount: 1,
-    cities: []
-  });
+  // Load persisted form data
+  const persistedData = formStorage.load<typeof defaultFormData>(APP_NAME, defaultFormData);
+  const [input, setInput] = useState<typeof defaultFormData>(persistedData);
+
+  // Persist form changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      formStorage.save(APP_NAME, input);
+    }, 500); // Debounce saves
+    return () => clearTimeout(timer);
+  }, [input]);
 
   const update = <K extends keyof typeof input>(
     key: K,

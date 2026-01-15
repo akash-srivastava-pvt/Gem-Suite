@@ -1,5 +1,5 @@
-import { callGemini } from "../proxies/gemini2.js";
-import { getApiKey } from "../utility/helper.js";
+import { getApiKey, callGeminiWithUserPreference } from "../utility/helper.js";
+import { parseAIJSON, extractTextContent } from "../utility/jsonParser.js";
 
 export const GeminiTransformService = {
   async generateATSResume(anonymisedData: any): Promise<any> {
@@ -26,7 +26,8 @@ export const GeminiTransformService = {
       - Maintain neutral professional phrasing; neutralize any abusive or sensitive language.
 
       Output format:
-      Return STRICT JSON in the following structure (no markdown formatting):
+      IMPORTANT: Return ONLY valid JSON. Do NOT include markdown code blocks, backticks, or any formatting.
+      Return STRICT JSON in the following structure:
       {
         "name": "CANDIDATE_NAME",
         "summary": "...",
@@ -56,8 +57,8 @@ export const GeminiTransformService = {
         ]
       }
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    return parseAIJSON(response.data);
   },
 
   async generateCoverLetter(anonymisedData: any): Promise<any> {
@@ -77,10 +78,12 @@ export const GeminiTransformService = {
       - Length: 3–4 concise paragraphs.
 
       Output format:
-      Return a JSON object: {"content": "the cover letter text"} (no markdown).
+      Return a JSON object: {"content": "the cover letter text"} (no markdown, no code blocks).
+      The content should be plain text with proper paragraph breaks.
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const textContent = extractTextContent(response.data, 'content');
+    return { content: textContent };
   },
 
   async generateSOP(anonymisedData: any): Promise<any> {
@@ -101,9 +104,11 @@ export const GeminiTransformService = {
       - Length: 600–800 words. Structured with logical paragraph flow.
 
       Output format:
-      Return a JSON object: {"content": "the SOP text"} (no markdown).
+      Return a JSON object: {"content": "the SOP text"} (no markdown, no code blocks).
+      The content should be plain text with proper paragraph breaks.
     `;
-    const response = await callGemini(apiKey, prompt);
-    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const textContent = extractTextContent(response.data, 'content');
+    return { content: textContent };
   }
 };

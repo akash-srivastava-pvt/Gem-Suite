@@ -1,10 +1,10 @@
 import { GeminiResponse } from "@gem/shared";
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"; // Updated model name for 2026
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"; // Updated model name for 2026
 
 const REQUEST_TIMEOUT = 45_000;
-const MAX_TOKENS = 1024;
+const MAX_TOKENS = 7200;
 
 export async function callGemini(
   apiKey: string,

@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'; // Types import karein';
-import { callGemini } from '../proxies/gemini2.js';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey } from '../utility/helper.js';
+import { getApiKey, callGeminiWithUserPreference } from '../utility/helper.js';
 import { buildTripPlannerPrompt } from '../agents/trip.plan.agent.js';
 import { LoggerModel } from '../models/loggerModel.js';
 
@@ -47,21 +46,23 @@ export async function TripController(req: Request, res: Response) {
         });
 
         // 5. External API Call
-        const rawResponse = (await callGemini(apiKey, message)).data;
+        const rawResponse = (await callGeminiWithUserPreference(apiKey, message)).data;
 
         LoggerModel.log(`Gemini API called for trip planning: ${data.places.join(', ')}`);
 
         // 6. JSON Sanitization (Very Important for AI responses)
-        // Markdown backticks hatane ke liye
-        const cleanedData = rawResponse.replace(/```json|```/g, "").trim();
-
         try {
-            const parsedData = JSON.parse(cleanedData);
+            const { parseAIJSON } = await import('../utility/jsonParser.js');
+            const parsedData = parseAIJSON(rawResponse);
             return res.status(200).json({ success: true, data: parsedData });
-        } catch (parseError) {
+        } catch (parseError: any) {
             // Agar AI ne invalid JSON bhej diya
-            console.error('AI JSON Parse Error:', cleanedData);
-            return res.status(502).json({ error: 'AI generated an invalid response format' });
+            console.error('AI JSON Parse Error:', parseError.message);
+            console.error('Response preview:', rawResponse.substring(0, 500));
+            return res.status(502).json({ 
+                error: 'AI generated an invalid response format',
+                details: parseError.message 
+            });
         }
 
     } catch (error: any) {

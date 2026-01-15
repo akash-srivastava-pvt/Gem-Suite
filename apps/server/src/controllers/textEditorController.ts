@@ -1,6 +1,5 @@
-import { callGemini } from "../proxies/gemini2.js";
 import { buildTextEditorPrompt } from "../agents/text.editor.agent.js";
-import { getApiKey } from "../utility/helper.js";
+import { getApiKey, callGeminiWithUserPreference } from "../utility/helper.js";
 import { Request, Response } from "express";
 import { LoggerModel } from "../models/loggerModel.js";
 
@@ -28,7 +27,7 @@ export async function TextEditorController(req: Request, res: Response) {
       tone,
     });
 
-    const result = (await callGemini(apiKey, prompt)).data;
+    const result = (await callGeminiWithUserPreference(apiKey, prompt)).data;
 
     LoggerModel.log(`Gemini API called for text editing: ${intent}`);
 

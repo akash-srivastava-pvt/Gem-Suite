@@ -45,14 +45,18 @@ const ErrorModal: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        top: 16,
-        right: 16,
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
         zIndex: 10000,
         maxWidth: 400,
+        width: '90%',
+        maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
         pointerEvents: 'auto',
+        overflowY: 'auto',
       }}
     >
       {errors.map((error) => (

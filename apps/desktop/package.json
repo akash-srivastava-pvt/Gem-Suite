@@ -63,6 +63,7 @@
       "createStartMenuShortcut": true
     },
     "win": {
+      "icon": "../../public/icon.png",
       "target": [
         "nsis"
       ]

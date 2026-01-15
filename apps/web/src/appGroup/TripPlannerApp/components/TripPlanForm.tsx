@@ -38,10 +38,10 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
 
   const inputStyle = {
     width: '100%',
-    padding: '12px 16px',
+    padding: '8px 12px',
     border: `1px solid ${theme.colors.border}`,
     borderRadius: theme.borderRadius.sm,
-    fontSize: '16px',
+    fontSize: '14px',
     outline: 'none',
     transition: theme.transitions.default,
     backgroundColor: theme.colors.surface,
@@ -50,8 +50,8 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
 
   const labelStyle = {
     display: 'block',
-    marginBottom: '8px',
-    fontSize: '12px',
+    marginBottom: '6px',
+    fontSize: '11px',
     fontWeight: 600,
     color: theme.colors.textSecondary,
     textTransform: 'uppercase' as const,
@@ -74,11 +74,11 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
         e.preventDefault();
         onSubmit(input);
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
     >
-      <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${theme.colors.border}` }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: theme.colors.primary, margin: 0 }}>Plan Your Trip</h2>
-        <p style={{ margin: '8px 0 0', color: theme.colors.textSecondary, fontSize: '14px' }}>
+      <div style={{ paddingBottom: '12px', borderBottom: `1px solid ${theme.colors.border}` }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: theme.colors.primary, margin: 0 }}>Plan Your Trip</h2>
+        <p style={{ margin: '4px 0 0', color: theme.colors.textSecondary, fontSize: '12px' }}>
           Let AI guide your next adventure
         </p>
       </div>
@@ -175,8 +175,8 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
             width: '100%',
             backgroundColor: theme.colors.primary,
             color: theme.colors.surface,
-            padding: '14px',
-            fontSize: '16px',
+            padding: '10px',
+            fontSize: '14px',
             fontWeight: 600,
             border: 'none',
             borderRadius: theme.borderRadius.md,

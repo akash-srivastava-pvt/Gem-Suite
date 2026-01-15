@@ -132,10 +132,10 @@ const styles = {
   },
   input: {
     width: '100%',
-    padding: '12px 16px',
+    padding: '8px 12px',
     borderRadius: theme.borderRadius.md,
     border: `1px solid ${theme.colors.border}`,
-    fontSize: '14px',
+    fontSize: '13px',
     outline: 'none',
     transition: theme.transitions.default,
     backgroundColor: theme.colors.background
@@ -155,10 +155,10 @@ const styles = {
     padding: '4px'
   },
   option: {
-    padding: '10px 12px',
+    padding: '6px 10px',
     cursor: 'pointer',
     borderRadius: theme.borderRadius.sm,
-    fontSize: '14px',
+    fontSize: '13px',
     transition: 'background-color 0.1s'
   },
   chipWrap: {
@@ -169,12 +169,12 @@ const styles = {
   chip: {
     backgroundColor: theme.colors.primary,
     color: theme.colors.surface,
-    padding: '6px 12px',
+    padding: '4px 10px',
     borderRadius: '100px',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    fontSize: '13px',
+    gap: '6px',
+    fontSize: '11px',
     boxShadow: theme.shadows.card
   },
   removeBtn: {

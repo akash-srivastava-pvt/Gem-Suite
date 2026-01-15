@@ -589,11 +589,11 @@ var import_express3 = require("express");
 // src/agents/text.editor.agent.ts
 function buildTextEditorPrompt({ intent, text, language, tone }) {
   const baseSystem = `
-You are Likhit AI, an intelligent writing assistant.
-Audience: journalists, teachers, students, lawyers.
+You are Likhit AI, an premium writing assistant.
+Audience: writers, poets, editors, journalists, teachers, students, lawyers.
 Follow these rules:
 - Preserve meaning unless asked to change
-- Be concise and professional
+- Be concise and professional for business, but creative for literature
 - No emojis
 `;
   switch (intent) {
@@ -625,9 +625,9 @@ ${text}
     case "continue":
       return `
 ${baseSystem}
-Task: Continue writing in the same style.
+Task: Continue the writing based on the context. If there is a specific 'Instruction', follow it strictly.
 
-Text:
+Content Context:
 ${text}
 `;
     case "translate":

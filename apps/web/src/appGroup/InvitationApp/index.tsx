@@ -24,15 +24,15 @@ export const InvitationApp = () => {
             {/* LEFT: SIDEBAR */}
             <div style={{
                 borderRight: `1px solid ${appTheme.colors.border}`,
-                padding: '40px 24px',
+                padding: '24px 20px',
                 backgroundColor: appTheme.colors.surface,
                 display: 'flex',
                 flexDirection: 'column'
             }}>
                 <h1 style={{
-                    fontSize: '24px',
+                    fontSize: '18px',
                     fontWeight: 'bold',
-                    marginBottom: '40px',
+                    marginBottom: '32px',
                     color: appTheme.colors.primary
                 }}>
                     Invitation Maker
@@ -51,12 +51,12 @@ export const InvitationApp = () => {
                     }}
                 />
 
-                <div style={{ marginTop: 'auto', paddingTop: '40px' }}>
+                <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
                     <button
                         onClick={wizard.reset}
                         style={{
                             width: '100%',
-                            padding: '12px',
+                            padding: '10px',
                             borderRadius: appTheme.borderRadius.md,
                             border: `1px solid ${appTheme.colors.border}`,
                             backgroundColor: 'transparent',
@@ -67,6 +67,7 @@ export const InvitationApp = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: '8px',
+                            fontSize: '13px',
                             transition: appTheme.transitions.default
                         }}
                         onMouseEnter={(e) => {
@@ -86,7 +87,7 @@ export const InvitationApp = () => {
             {/* RIGHT: CONTENT */}
             <div style={{
                 overflowY: 'auto',
-                padding: '40px 60px',
+                padding: '24px 40px',
                 display: 'flex',
                 flexDirection: 'column',
                 maxWidth: '800px', // Limit width for readability
@@ -96,7 +97,7 @@ export const InvitationApp = () => {
                 <div style={{
                     backgroundColor: appTheme.colors.surface,
                     borderRadius: appTheme.borderRadius.lg,
-                    padding: '32px',
+                    padding: '24px',
                     boxShadow: appTheme.shadows.card,
                     minHeight: 'min-content'
                 }}>

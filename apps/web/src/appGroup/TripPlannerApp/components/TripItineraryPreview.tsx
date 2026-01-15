@@ -38,9 +38,9 @@ export const TripItineraryPreview = ({ data }: any) => {
 
   const sectionHeaderStyle: React.CSSProperties = {
     borderBottom: `2px solid ${theme.colors.primary}`,
-    paddingBottom: '12px',
-    marginBottom: '24px',
-    fontSize: '20px',
+    paddingBottom: '8px',
+    marginBottom: '16px',
+    fontSize: '16px',
     fontWeight: 700,
     color: theme.colors.primary
   };
@@ -48,8 +48,8 @@ export const TripItineraryPreview = ({ data }: any) => {
   const cardStyle: React.CSSProperties = {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.md,
-    padding: '24px',
-    marginBottom: '20px',
+    padding: '16px',
+    marginBottom: '16px',
     boxShadow: theme.shadows.card,
     border: `1px solid ${theme.colors.border}`,
     transition: theme.transitions.default
@@ -71,8 +71,8 @@ export const TripItineraryPreview = ({ data }: any) => {
         <button
           onClick={downloadPdf}
           style={{
-            padding: '12px 24px',
-            fontSize: '14px',
+            padding: '8px 16px',
+            fontSize: '12px',
             fontWeight: 600,
             cursor: 'pointer',
             backgroundColor: theme.colors.primary,
@@ -94,8 +94,8 @@ export const TripItineraryPreview = ({ data }: any) => {
 
         {/* SUMMARY SECTION */}
         <div style={{ ...cardStyle, background: theme.colors.primary, color: theme.colors.surface }}>
-          <h1 style={{ fontSize: '32px', margin: '0 0 16px' }}>Trip to {summary.endPoint}</h1>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px' }}>
+          <h1 style={{ fontSize: '24px', margin: '0 0 12px' }}>Trip to {summary.endPoint}</h1>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '16px' }}>
             <div>
               <div style={{ ...labelStyle, color: 'rgba(255,255,255,0.6)' }}>Route</div>
               <div style={{ fontWeight: 600 }}>{summary.startPoint} → {summary.endPoint}</div>
@@ -120,7 +120,7 @@ export const TripItineraryPreview = ({ data }: any) => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                 <div>
                   <div style={{ ...labelStyle }}>Day {day.day}</div>
-                  <h3 style={{ margin: 0, fontSize: '20px', color: theme.colors.primary }}>{day.city}, {day.state}</h3>
+                  <h3 style={{ margin: 0, fontSize: '16px', color: theme.colors.primary }}>{day.city}, {day.state}</h3>
                 </div>
                 <div style={{ backgroundColor: theme.colors.background, padding: '6px 12px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
                   ₹{day.dailyTotalCost}

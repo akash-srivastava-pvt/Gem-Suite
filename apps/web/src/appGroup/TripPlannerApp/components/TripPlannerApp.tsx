@@ -26,7 +26,7 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: theme.colors.background }}>
       <header style={{
-        padding: '24px 32px',
+        padding: '16px 20px',
         borderBottom: `1px solid ${theme.colors.border}`,
         backgroundColor: theme.colors.surface,
         display: 'flex',
@@ -34,12 +34,12 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
         justifyContent: 'space-between'
       }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0, color: theme.colors.primary }}>Trip Itinerary</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '14px', color: theme.colors.textSecondary }}>
-            {hasData ? `Generated plan for ${data.summary.startPoint} to ${data.summary.endPoint}` : 'Specify your trip details to generate a plan'}
+          <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: theme.colors.primary }}>Trip Itinerary</h2>
+          <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.colors.textSecondary }}>
+            {hasData ? `Plan for ${data.summary.startPoint} to ${data.summary.endPoint}` : 'Specify details to generate a plan'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, backgroundColor: theme.colors.background, padding: '4px', borderRadius: theme.borderRadius.md }}>
+        <div style={{ display: 'flex', gap: 6, backgroundColor: theme.colors.background, padding: '4px', borderRadius: theme.borderRadius.md }}>
           {tabSet.map(t => (
             <button key={t} style={tabStyle(activeTab === t)} onClick={() => setActiveTab(t as Tab)}>
               {t === 'preview' ? 'Itinerary' : t.charAt(0).toUpperCase() + t.slice(1)}
@@ -48,7 +48,7 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
         </div>
       </header>
 
-      <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+      <main style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
         {!hasData && (
           <div style={{
             height: '100%',
@@ -57,10 +57,10 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
             justifyContent: 'center',
             color: theme.colors.textSecondary,
             flexDirection: 'column',
-            gap: '16px'
+            gap: '12px'
           }}>
-            <div style={{ fontSize: '48px' }}>🗺️</div>
-            <p style={{ fontSize: '18px', fontWeight: 500 }}>Your adventure starts here.</p>
+            <div style={{ fontSize: '32px' }}>🗺️</div>
+            <p style={{ fontSize: '14px', fontWeight: 500 }}>Your adventure starts here.</p>
           </div>
         )}
         {hasData && activeTab === 'preview' && <TripItineraryPreview data={data} />}

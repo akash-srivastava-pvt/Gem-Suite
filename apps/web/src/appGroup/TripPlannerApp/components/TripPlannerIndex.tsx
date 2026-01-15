@@ -29,11 +29,11 @@ export const TripPlannerIndex = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '500px 1fr',
+        gridTemplateColumns: '0.5fr 1fr',
         height: '100%',
         overflow: 'auto',
         backgroundColor: theme.colors.background,
-        fontFamily: "'Inter', sans-serif" // Assuming global font or default
+        fontFamily: "'Outfit', sans-serif"
       }}
     >
       {/* LEFT: FORM SIDEBAR */}
@@ -42,7 +42,7 @@ export const TripPlannerIndex = () => {
           borderRight: `1px solid ${theme.colors.border}`,
           overflowY: 'auto',
           height: '100%',
-          padding: '24px',
+          padding: '16px',
           backgroundColor: theme.colors.surface,
           boxShadow: theme.shadows.card
         }}
@@ -56,7 +56,7 @@ export const TripPlannerIndex = () => {
           position: 'relative',
           overflowY: 'auto',
           height: '100%',
-          padding: '32px',
+          padding: '20px',
           backgroundColor: theme.colors.background
         }}
       >

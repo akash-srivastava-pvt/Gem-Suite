@@ -161,6 +161,7 @@ function createWindow(url: string) {
     height: Math.min(800, height),
     show: true,
     backgroundColor: '#667eea',
+    icon: getAssetPath('icon.png'),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,

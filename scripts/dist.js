@@ -96,6 +96,12 @@ try {
     }
   });
 
+  // Copy icon
+  const iconSrc = path.join(projectRoot, 'public/icon.png');
+  if (fs.existsSync(iconSrc)) {
+    fs.copyFileSync(iconSrc, path.join(assetsDestDir, 'icon.png'));
+  }
+
   // 11. Build desktop
   console.log('🖥️  Desktop');
   execSync('npx tsc --build apps/desktop', { stdio: 'inherit', cwd: projectRoot });

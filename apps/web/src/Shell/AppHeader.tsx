@@ -1,6 +1,7 @@
 import React from "react";
 import { ShellApp } from "@gem/shared";
 import { theme } from "../theme.js";
+import { useShell } from "../context/ShellContext.js";
 
 type Props = {
     activeApp: ShellApp;
@@ -8,14 +9,21 @@ type Props = {
 };
 
 const AppHeader: React.FC<Props> = ({ activeApp, onBack }) => {
+    const { headerActions } = useShell();
+
     return (
         <div style={styles.header}>
-            <button onClick={onBack} style={styles.backButton}>
-                ←
-            </button>
-            <div style={styles.titleContainer}>
-                <span style={styles.icon}>{activeApp.icon}</span>
-                <span style={styles.title}>{activeApp.name}</span>
+            <div style={styles.left}>
+                <button onClick={onBack} style={styles.backButton} title="Go Back">
+                    ←
+                </button>
+                <div style={styles.titleContainer}>
+                    <span style={styles.icon}>{activeApp.icon}</span>
+                    <span style={styles.title}>{activeApp.name}</span>
+                </div>
+            </div>
+            <div style={styles.right}>
+                {headerActions}
             </div>
         </div>
     );
@@ -23,27 +31,37 @@ const AppHeader: React.FC<Props> = ({ activeApp, onBack }) => {
 
 const styles = {
     header: {
-        height: "60px",
-        background: theme.colors.surface,
-        borderBottom: `1px solid ${theme.colors.border}`,
+        height: "64px",
+        background: "var(--surface)",
+        borderBottom: `1px solid var(--border)`,
         display: "flex",
         alignItems: "center",
-        padding: "0 20px",
-        gap: "20px",
+        justifyContent: "space-between",
+        padding: "0 24px",
         flexShrink: 0,
+        zIndex: 100,
+    },
+    left: {
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+    },
+    right: {
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
     },
     backButton: {
         background: "transparent",
         border: "none",
-        fontSize: "24px",
+        fontSize: "20px",
         cursor: "pointer",
         padding: "8px",
-        borderRadius: "50%",
+        borderRadius: "var(--radius-full)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: theme.colors.primary,
-        transition: theme.transitions.default,
+        color: "var(--text)",
         width: "40px",
         height: "40px",
     },
@@ -53,12 +71,12 @@ const styles = {
         gap: "12px",
     },
     icon: {
-        fontSize: "20px",
+        fontSize: "24px",
     },
     title: {
-        fontSize: "18px",
+        fontSize: "1.1rem",
         fontWeight: 600,
-        color: theme.colors.text,
+        color: "var(--text)",
     },
 };
 

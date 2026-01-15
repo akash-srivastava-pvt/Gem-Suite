@@ -27,6 +27,7 @@ export interface Activate {
 export interface ShellApp {
   id: string;
   name: string;
+  description?: string;
   icon: any;
   component: any;
 }

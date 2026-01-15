@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { TripPlanForm } from './TripPlanForm.jsx';
 import { TripPlannerApp } from './TripPlannerApp.jsx';
 import { tripService } from '../services/tripService.js';
-import { theme } from '../../../theme.js';
+import ResizableLayout from '../../../components/ResizableLayout.js';
 
 export const TripPlannerIndex = () => {
   const [tripData, setTripData] = useState<any>(null);
@@ -13,9 +13,7 @@ export const TripPlannerIndex = () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('[CLIENT] Submitting payload:', payload);
       const response = await tripService.query(payload);
-      console.log('[CLIENT] Trip response:', response);
       setTripData(response);
     } catch (err: any) {
       console.error(err);
@@ -25,80 +23,57 @@ export const TripPlannerIndex = () => {
     }
   };
 
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '0.5fr 1fr',
-        height: '100%',
-        overflow: 'auto',
-        backgroundColor: theme.colors.background,
-        fontFamily: "'Outfit', sans-serif"
-      }}
-    >
-      {/* LEFT: FORM SIDEBAR */}
-      <div
-        style={{
-          borderRight: `1px solid ${theme.colors.border}`,
-          overflowY: 'auto',
-          height: '100%',
-          padding: '16px',
-          backgroundColor: theme.colors.surface,
-          boxShadow: theme.shadows.card
-        }}
-      >
-        <TripPlanForm onSubmit={handleGenerateTrip} loading={loading} />
-      </div>
-
-      {/* RIGHT: PREVIEWS */}
-      <div
-        style={{
-          position: 'relative',
-          overflowY: 'auto',
-          height: '100%',
-          padding: '20px',
-          backgroundColor: theme.colors.background
-        }}
-      >
-        {error && (
-          <div style={{
-            color: '#d32f2f',
-            backgroundColor: '#ffebee',
-            padding: '12px',
-            borderRadius: theme.borderRadius.sm,
-            marginBottom: '24px',
-            border: '1px solid #ffcdd2'
-          }}>
-            {error}
-          </div>
-        )}
-
-        <TripPlannerApp data={tripData} />
-
-        {/* Loading overlay */}
-        {loading && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              backgroundColor: 'rgba(255,255,255,0.8)',
-              backdropFilter: 'blur(4px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 50,
-              color: theme.colors.primary
-            }}
-          >
-            <div style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>Generating Trip...</div>
-            <div style={{ fontSize: '16px', color: theme.colors.textSecondary }}>Using Gem AI to plan your adventure</div>
-          </div>
-        )}
-      </div>
+  const LeftPanel = (
+    <div style={{ padding: '2rem', height: '100%', background: 'var(--surface)' }}>
+      <TripPlanForm onSubmit={handleGenerateTrip} loading={loading} />
     </div>
+  );
+
+  const RightPanel = (
+    <div style={{ position: 'relative', height: '100%', padding: '24px', background: 'var(--background)' }}>
+      {error && (
+        <div className="card" style={{
+          color: 'var(--error)',
+          padding: '16px',
+          marginBottom: '24px',
+          borderLeft: '4px solid var(--error)',
+          borderRadius: 'var(--radius-md)'
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <TripPlannerApp data={tripData} />
+      </div>
+
+      {loading && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(255,255,255,0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+        }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '8px' }}>Crafting Itinerary...</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Gem AI is searching for the best destinations</div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <ResizableLayout
+      leftPanel={LeftPanel}
+      rightPanel={RightPanel}
+      initialLeftWidth={400}
+    />
   );
 };

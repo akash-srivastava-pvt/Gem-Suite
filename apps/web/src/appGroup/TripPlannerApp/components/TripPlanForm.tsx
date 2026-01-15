@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { CityAttractions, CitySelection } from './CityAttractions.js';
-import { theme } from '../../../theme.js';
 
 export const TripPlanForm = ({ onSubmit, loading }: any) => {
   const [input, setInput] = useState<{
@@ -36,36 +35,14 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
     }));
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '8px 12px',
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: theme.borderRadius.sm,
-    fontSize: '14px',
-    outline: 'none',
-    transition: theme.transitions.default,
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.text
-  };
-
-  const labelStyle = {
+  const labelStyle: React.CSSProperties = {
     display: 'block',
     marginBottom: '6px',
-    fontSize: '11px',
+    fontSize: '0.75rem',
     fontWeight: 600,
-    color: theme.colors.textSecondary,
-    textTransform: 'uppercase' as const,
+    color: 'var(--text-secondary)',
+    textTransform: 'uppercase',
     letterSpacing: '0.05em'
-  };
-
-  const handleFocus = (e: any) => {
-    e.target.style.borderColor = theme.colors.primary;
-    e.target.style.boxShadow = `0 0 0 2px ${theme.colors.hoverOverlay}`;
-  };
-
-  const handleBlur = (e: any) => {
-    e.target.style.borderColor = theme.colors.border;
-    e.target.style.boxShadow = 'none';
   };
 
   return (
@@ -74,12 +51,12 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
         e.preventDefault();
         onSubmit(input);
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}
     >
-      <div style={{ paddingBottom: '12px', borderBottom: `1px solid ${theme.colors.border}` }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: theme.colors.primary, margin: 0 }}>Plan Your Trip</h2>
-        <p style={{ margin: '4px 0 0', color: theme.colors.textSecondary, fontSize: '12px' }}>
-          Let AI guide your next adventure
+      <div style={{ paddingBottom: '16px', borderBottom: `1px solid var(--border)` }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '4px' }}>Plan Your Adventure</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          AI will craft a personalized travel experience for you.
         </p>
       </div>
 
@@ -88,9 +65,7 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
         <select
           value={input.tripType}
           onChange={e => update('tripType', e.target.value)}
-          style={inputStyle}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          style={{ width: '100%' }}
         >
           <option value="roundtrip">Round Trip</option>
           <option value="oneway">One Way</option>
@@ -100,95 +75,72 @@ export const TripPlanForm = ({ onSubmit, loading }: any) => {
       <div>
         <label style={labelStyle}>Start Location</label>
         <input
-          placeholder="e.g. New York, NY"
+          placeholder="e.g. San Francisco, CA"
           value={input.startLocation}
           onChange={e => update('startLocation', e.target.value)}
-          style={inputStyle}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          style={{ width: '100%' }}
         />
       </div>
 
       {input.tripType === 'oneway' && (
-        <div style={{ animation: 'fadeIn 0.3s ease' }}>
+        <div>
           <label style={labelStyle}>End Location</label>
           <input
-            placeholder="e.g. London, UK"
+            placeholder="e.g. Kyoto, Japan"
             value={input.endLocation}
             onChange={e => update('endLocation', e.target.value)}
-            style={inputStyle}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            style={{ width: '100%' }}
           />
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         <div>
-          <label style={labelStyle}>Start Date</label>
+          <label style={labelStyle}>Departure</label>
           <input
             type="date"
             value={input.startDate}
             onChange={e => update('startDate', e.target.value)}
-            style={inputStyle}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            style={{ width: '100%' }}
           />
         </div>
         <div>
-          <label style={labelStyle}>End Date</label>
+          <label style={labelStyle}>Return</label>
           <input
             type="date"
             value={input.endDate}
             onChange={e => update('endDate', e.target.value)}
-            style={inputStyle}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            style={{ width: '100%' }}
           />
         </div>
       </div>
 
       <div>
-        <label style={labelStyle}>Travelers</label>
+        <label style={labelStyle}>Number of Travelers</label>
         <input
           type="number"
           min={1}
           value={input.peopleCount}
           onChange={e => update('peopleCount', +e.target.value)}
-          style={inputStyle}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          style={{ width: '100%' }}
         />
       </div>
 
-      <div style={{ paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
+      <div style={{ paddingTop: '8px' }}>
         <CityAttractions
           value={input.cities}
           onChange={(cities: any) => update('cities', cities)}
         />
       </div>
 
-      <div style={{ marginTop: '8px' }}>
+      <div style={{ marginTop: '12px' }}>
         <button
+          type="submit"
+          className="primary-btn"
           disabled={loading}
-          style={{
-            width: '100%',
-            backgroundColor: theme.colors.primary,
-            color: theme.colors.surface,
-            padding: '10px',
-            fontSize: '14px',
-            fontWeight: 600,
-            border: 'none',
-            borderRadius: theme.borderRadius.md,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.7 : 1,
-            transition: theme.transitions.default,
-            boxShadow: theme.shadows.card
-          }}
-          onMouseEnter={(e) => !loading && (e.currentTarget.style.transform = 'translateY(-1px)')}
-          onMouseLeave={(e) => !loading && (e.currentTarget.style.transform = 'none')}
+          style={{ width: '100%', padding: '0.8rem' }}
         >
-          {loading ? 'Generating Itinerary...' : 'Generate Trip ✈️'}
+          {loading ? 'Curating your trip...' : 'Generate Itinerary'}
         </button>
       </div>
     </form>

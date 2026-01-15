@@ -23,7 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/server.ts
-var import_express7 = __toESM(require("express"), 1);
+var import_express8 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_path3 = __toESM(require("path"), 1);
 var import_config = require("dotenv/config");
@@ -147,7 +147,7 @@ var DatabaseModel = class {
 var db = new DatabaseModel();
 
 // src/routes/index.ts
-var import_express6 = require("express");
+var import_express7 = require("express");
 
 // src/routes/activateRoutes.ts
 var import_express = require("express");
@@ -989,13 +989,301 @@ router5.get("/logs", UserController.getLogs);
 router5.post("/delete-data", UserController.deleteData);
 var user_routes_default = router5;
 
+// src/routes/resumeRoutes.ts
+var import_express6 = require("express");
+
+// src/services/ResumeService.ts
+var ResumeService = {
+  async getResume() {
+    const results = db.query("SELECT * FROM resume LIMIT 1");
+    return results.length > 0 ? results[0] : null;
+  },
+  async createOrUpdateResume(data) {
+    const existing = await this.getResume();
+    if (existing) {
+      const sets = Object.keys(data).map((key) => `${key} = ?`).join(", ");
+      const values = Object.values(data);
+      db.execute(`UPDATE resume SET ${sets} WHERE id = ?`, [...values, existing.id]);
+    } else {
+      const columns = Object.keys(data).join(", ");
+      const placeholders = Object.keys(data).map(() => "?").join(", ");
+      const values = Object.values(data);
+      db.execute(`INSERT INTO resume (${columns}) VALUES (${placeholders})`, values);
+    }
+  }
+};
+
+// src/services/AnonymisationService.ts
+var AnonymisationService = {
+  anonymise: (data) => {
+    const originalPII = {
+      name: data.name,
+      contacts: [...data.contacts],
+      links: [...data.links]
+    };
+    const anonymisedData = {
+      ...data,
+      name: "CANDIDATE_NAME",
+      contacts: data.contacts.map((c, i) => ({
+        key: c.key,
+        value: `${c.key.toUpperCase().replace(/\s+/g, "_")}_PLACEHOLDER_${i + 1}`
+      })),
+      links: data.links.map((l, i) => ({
+        key: l.key,
+        value: `PROFILE_LINK_${i + 1}`
+      }))
+    };
+    return { anonymisedData, originalPII };
+  },
+  reinsert: (anonymisedText, originalPII) => {
+    let result = anonymisedText;
+    result = result.replace(/CANDIDATE_NAME/g, originalPII.name);
+    originalPII.contacts.forEach((c, i) => {
+      const placeholder = `${c.key.toUpperCase().replace(/\s+/g, "_")}_PLACEHOLDER_${i + 1}`;
+      const regex = new RegExp(placeholder, "g");
+      result = result.replace(regex, c.value);
+    });
+    originalPII.links.forEach((l, i) => {
+      const placeholder = `PROFILE_LINK_${i + 1}`;
+      const regex = new RegExp(placeholder, "g");
+      result = result.replace(regex, l.value);
+    });
+    return result;
+  },
+  reinsertIntoJson: (jsonObj, originalPII) => {
+    let jsonString = JSON.stringify(jsonObj);
+    const reinsertedString = AnonymisationService.reinsert(jsonString, originalPII);
+    try {
+      return JSON.parse(reinsertedString);
+    } catch (e) {
+      console.error("Failed to parse reinserted JSON", e);
+      return jsonObj;
+    }
+  }
+};
+
+// src/services/GeminiTransformService.ts
+var GeminiTransformService = {
+  async generateATSResume(anonymisedData) {
+    const apiKey = await getApiKey();
+    const prompt = `
+      You are a professional resume writer and ATS optimization expert.
+      Using the provided anonymised candidate data, generate a COMPLETE and ATS-friendly resume.
+
+      Data:
+      ${JSON.stringify(anonymisedData, null, 2)}
+
+      Rules:
+      - Include ALL sections present in the input:
+        - Name (CANDIDATE_NAME)
+        - Contacts (placeholders)
+        - Links
+        - Work History
+        - Education
+        - Personal Projects
+        - Skills
+      - Do NOT invent experience or hallucinate achievements.
+      - Rewrite content professionally for a student / early-career tone.
+      - Optimize for keyword scanning using clear bullet points.
+      - Maintain neutral professional phrasing; neutralize any abusive or sensitive language.
+
+      Output format:
+      Return STRICT JSON in the following structure (no markdown formatting):
+      {
+        "name": "CANDIDATE_NAME",
+        "summary": "...",
+        "contacts": [{"key": "string", "value": "string"}],
+        "links": [{"key": "string", "value": "string"}],
+        "skills": ["..."],
+        "work_experience": [
+          {
+            "title": "...",
+            "organization": "...",
+            "duration": "...",
+            "highlights": ["..."]
+          }
+        ],
+        "education": [
+          {
+            "degree": "...",
+            "institution": "...",
+            "details": "..."
+          }
+        ],
+        "projects": [
+          {
+            "name": "...",
+            "description": "..."
+          }
+        ]
+      }
+    `;
+    const response = await callGemini(apiKey, prompt);
+    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+  },
+  async generateCoverLetter(anonymisedData) {
+    const apiKey = await getApiKey();
+    const prompt = `
+      You are a professional career coach.
+      Using the anonymised resume data provided, generate a professional cover letter.
+
+      Data:
+      ${JSON.stringify(anonymisedData, null, 2)}
+
+      Rules:
+      - Suitable for Internships, Entry-level roles, or Graduate positions.
+      - Reflect ALL resume sections.
+      - Confident but humble tone.
+      - Remove or rewrite abusive, sensitive, or unsafe language into neutral professional phrasing.
+      - Length: 3\u20134 concise paragraphs.
+
+      Output format:
+      Return a JSON object: {"content": "the cover letter text"} (no markdown).
+    `;
+    const response = await callGemini(apiKey, prompt);
+    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+  },
+  async generateSOP(anonymisedData) {
+    const apiKey = await getApiKey();
+    const prompt = `
+      You are an academic writing expert specializing in university admissions.
+      Using the anonymised candidate data provided, generate a formal Statement of Purpose (SOP).
+
+      Data:
+      ${JSON.stringify(anonymisedData, null, 2)}
+
+      Rules:
+      - Suitable for Undergraduate, Postgraduate, or International programs.
+      - Focus on Education, Academic interests, Personal projects, and Career goals.
+      - Formal academic tone (avoid corporate language).
+      - Do NOT invent research or credentials.
+      - Neutralize sensitive or inappropriate content.
+      - Length: 600\u2013800 words. Structured with logical paragraph flow.
+
+      Output format:
+      Return a JSON object: {"content": "the SOP text"} (no markdown).
+    `;
+    const response = await callGemini(apiKey, prompt);
+    return JSON.parse(response.data.replace(/```json|```/g, "").trim());
+  }
+};
+
+// src/services/AuditLogService.ts
+var AuditLogService = {
+  log: (event, dataType = "RESUME", piiExposed = false, status = "SUCCESS") => {
+    const logData = {
+      event,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      dataType,
+      piiExposed,
+      status
+    };
+    LoggerModel.log(JSON.stringify(logData));
+  }
+};
+
+// src/controllers/resumeController.ts
+var ResumeController = {
+  async getResume(req, res) {
+    try {
+      const resume = await ResumeService.getResume();
+      if (resume) {
+        const formatted = {
+          ...resume,
+          contacts: JSON.parse(resume.contacts || "[]"),
+          links: JSON.parse(resume.links || "[]"),
+          work_history: JSON.parse(resume.work_history || "[]"),
+          education: JSON.parse(resume.education || "[]"),
+          personal_projects: JSON.parse(resume.personal_projects || "[]"),
+          skills: JSON.parse(resume.skills || "[]")
+        };
+        res.json(formatted);
+      } else {
+        res.json(null);
+      }
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+  async saveResume(req, res) {
+    try {
+      const data = req.body;
+      const dbData = {
+        name: data.name,
+        contacts: JSON.stringify(data.contacts),
+        links: JSON.stringify(data.links),
+        work_history: JSON.stringify(data.work_history),
+        education: JSON.stringify(data.education),
+        personal_projects: JSON.stringify(data.personal_projects),
+        skills: JSON.stringify(data.skills),
+        cover_letter_para: data.cover_letter_para
+      };
+      await ResumeService.createOrUpdateResume(dbData);
+      AuditLogService.log("Resume created / updated", "RESUME", false, "SUCCESS");
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+  async generateATS(req, res) {
+    try {
+      const data = req.body;
+      AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
+      const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
+      AuditLogService.log("Data sent to Gemini", "RESUME_ATS", false, "SUCCESS");
+      const geminiResult = await GeminiTransformService.generateATSResume(anonymisedData);
+      AuditLogService.log("Gemini response received", "RESUME_ATS", false, "SUCCESS");
+      const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
+      res.json(finalResult);
+    } catch (error) {
+      AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
+      res.status(500).json({ error: error.message });
+    }
+  },
+  async generateCoverLetter(req, res) {
+    try {
+      const data = req.body;
+      const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
+      AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
+      const geminiResult = await GeminiTransformService.generateCoverLetter(anonymisedData);
+      const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      res.json(finalResult);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+  async generateSOP(req, res) {
+    try {
+      const data = req.body;
+      const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
+      AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
+      const geminiResult = await GeminiTransformService.generateSOP(anonymisedData);
+      const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      res.json(finalResult);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+};
+
+// src/routes/resumeRoutes.ts
+var router6 = (0, import_express6.Router)();
+router6.get("/", ResumeController.getResume);
+router6.post("/", ResumeController.saveResume);
+router6.post("/generate-ats", ResumeController.generateATS);
+router6.post("/generate-cover-letter", ResumeController.generateCoverLetter);
+router6.post("/generate-sop", ResumeController.generateSOP);
+var resumeRoutes_default = router6;
+
 // src/routes/index.ts
-var apiRouter = (0, import_express6.Router)();
+var apiRouter = (0, import_express7.Router)();
 apiRouter.use("/activate", activateRoutes_default);
 apiRouter.use("/trip", tripRoutes_default);
 apiRouter.use("/text-editor", textEditorRoutes_default);
 apiRouter.use("/invitation", invitationRoutes_default);
 apiRouter.use("/user", user_routes_default);
+apiRouter.use("/resume", resumeRoutes_default);
 
 // src/server.ts
 var import_meta = {};
@@ -1005,9 +1293,9 @@ async function startServer() {
     console.log("\u23F3 Initializing database...");
     await db.init();
     console.log("\u2705 Database ready");
-    const app = (0, import_express7.default)();
+    const app = (0, import_express8.default)();
     app.use((0, import_cors.default)());
-    app.use(import_express7.default.json());
+    app.use(import_express8.default.json());
     app.use("/api/v1", apiRouter);
     app.get("/health", (_req, res) => {
       res.json({
@@ -1017,7 +1305,7 @@ async function startServer() {
     });
     const publicPath = process.env.WEB_DIST_PATH || import_path3.default.join(SERVER_DIR, "../web");
     console.log(`\u{1F4C2} Serving frontend from: ${publicPath}`);
-    app.use(import_express7.default.static(publicPath));
+    app.use(import_express8.default.static(publicPath));
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API route not found" });

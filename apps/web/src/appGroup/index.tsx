@@ -15,30 +15,35 @@ const AppGroup = (): ShellApp[] => {
         {
             id: 'profile',
             name: 'Gem Profile',
+            description: 'Manage your identity, API keys, and user settings.',
             icon: <ProfileIcon />,
             component: ProfileApp,
         },
-        // {
-        //     id: 'resumemaker',
-        //     name: 'Gem Vivrad',
-        //     icon: <CVIcon />,
-        //     component: ResumeMakerApp,
-        // },
+        {
+            id: 'resumemaker',
+            name: 'Gem Vivarad',
+            description: 'AI-powered resume, cover letter, and SOP builder.',
+            icon: <CVIcon />,
+            component: ResumeMakerApp,
+        },
         {
             id: 'texteditor',
             name: 'Gem Likhit',
+            description: 'Context-aware writing assistant for drafting and editing.',
             icon: <WriteIcon />,
             component: TextEditorApp,
         },
         {
             id: 'tripplanner',
             name: 'Gem Musafir',
+            description: 'Plan personalized travel itineraries with AI insights.',
             icon: <TripIcon />,
             component: TripPlannerApp,
         },
         {
             id: 'invitation',
             name: 'Gem Amantrada',
+            description: 'Design elegant digital invitations for any occasion.',
             icon: <InviteIcon />,
             component: InvitationApp,
         }

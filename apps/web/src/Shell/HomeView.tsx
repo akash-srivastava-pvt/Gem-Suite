@@ -1,7 +1,6 @@
 import React from "react";
 import { ShellApp } from "@gem/shared";
 import AppTile from "./AppTile.js";
-import { theme } from "../theme.js";
 
 type Props = {
     apps: ShellApp[];
@@ -13,12 +12,12 @@ const HomeView: React.FC<Props> = ({ apps, onSelectApp, isAgreed }) => {
     return (
         <div style={styles.container}>
             <div style={styles.content}>
-                <div style={{ textAlign: "center" }}>
-                    <h1 style={styles.heading}>Aryavarta Gem Suite</h1>
-                    <p style={{ color: theme.colors.textSecondary, marginTop: "8px", fontSize: "16px" }}>
+                <div style={styles.headerArea}>
+                    <h1 style={styles.heading}>Gem Desktop</h1>
+                    <p style={styles.subheading}>
                         {isAgreed
-                            ? "Intelligent laboratory of connected AI assistants."
-                            : "Please complete the User Agreement in Gem Profile to unlock all apps."}
+                            ? "Professional AI workspace for creative and analytical tasks."
+                            : "Action Required: Please complete the User Agreement in Gem Profile to unlock all features."}
                     </p>
                 </div>
                 <div style={styles.grid}>
@@ -32,8 +31,8 @@ const HomeView: React.FC<Props> = ({ apps, onSelectApp, isAgreed }) => {
                     ))}
                 </div>
             </div>
-            <div style={{ position: "absolute", bottom: "32px", fontSize: "12px", color: theme.colors.textSecondary, opacity: 0.5 }}>
-                Aryavarta Labs © 2026
+            <div style={styles.footer}>
+                Aryavarta Labs © 2026 • Private Beta v1.0
             </div>
         </div>
     );
@@ -46,31 +45,53 @@ const styles = {
         flexDirection: "column" as const,
         alignItems: "center",
         justifyContent: "center",
-        background: `linear-gradient(180deg, ${theme.colors.surface} 0%, ${theme.colors.background} 100%)`,
-        padding: "40px",
-        minHeight: "100%",
+        background: "var(--background)",
+        padding: "64px 40px",
+        minHeight: "100vh",
         position: "relative" as const,
+        overflowY: "auto" as const,
     },
     content: {
-        maxWidth: "1000px",
+        maxWidth: "1200px",
         width: "100%",
         display: "flex",
         flexDirection: "column" as const,
         alignItems: "center",
-        gap: "64px",
+        gap: "48px",
+    },
+    headerArea: {
+        textAlign: "center" as const,
+        maxWidth: "600px",
     },
     heading: {
-        fontSize: "42px",
+        fontSize: "3.5rem",
         fontWeight: 800,
-        color: theme.colors.primary,
+        color: "var(--primary)",
         margin: 0,
-        letterSpacing: "-0.02em",
+        letterSpacing: "-0.04em",
+        lineHeight: 1.1,
+    },
+    subheading: {
+        color: "var(--text-secondary)",
+        marginTop: "16px",
+        fontSize: "1.125rem",
+        lineHeight: 1.6,
     },
     grid: {
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
         gap: "24px",
         width: "100%",
+        paddingBottom: "80px",
+    },
+    footer: {
+        position: "absolute" as const,
+        bottom: "32px",
+        fontSize: "0.75rem",
+        color: "var(--text-secondary)",
+        opacity: 0.6,
+        letterSpacing: "0.05em",
+        textTransform: "uppercase" as const,
     },
 };
 

@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { ShellApp } from "@gem/shared";
-import { theme } from "../theme.js";
 
 type Props = {
     app: ShellApp;
@@ -10,31 +9,38 @@ type Props = {
 
 const AppTile: React.FC<Props> = ({ app, onClick, disabled }) => {
     const [isHovered, setIsHovered] = useState(false);
-    const [isPressed, setIsPressed] = useState(false);
-
-    const style = {
-        ...styles.container,
-        ...(isHovered && !disabled ? styles.containerHover : {}),
-        ...(isPressed && !disabled ? styles.containerActive : {}),
-        ...(disabled ? styles.containerDisabled : {}),
-    };
 
     return (
         <div
-            style={style}
+            style={{
+                ...styles.container,
+                ...(isHovered && !disabled ? styles.containerHover : {}),
+                ...(disabled ? styles.containerDisabled : {}),
+            }}
             onClick={disabled ? undefined : onClick}
             onMouseEnter={() => !disabled && setIsHovered(true)}
-            onMouseLeave={() => {
-                setIsHovered(false);
-                setIsPressed(false);
-            }}
-            onMouseDown={() => !disabled && setIsPressed(true)}
-            onMouseUp={() => setIsPressed(false)}
+            onMouseLeave={() => setIsHovered(false)}
         >
-            <div style={{ ...styles.icon, opacity: disabled ? 0.4 : 1 }}>{app.icon}</div>
-            <div style={styles.content}>
-                <span style={{ ...styles.title, opacity: disabled ? 0.6 : 1 }}>{app.name}</span>
-                {disabled && <span style={styles.lockedBadge}>Locked</span>}
+            <div style={styles.header}>
+                <div style={{ ...styles.icon, opacity: disabled ? 0.4 : 1 }}>{app.icon}</div>
+                {disabled && (
+                    <div style={styles.lockBadge}>
+                        <span style={{ fontSize: '10px' }}>Locked</span>
+                    </div>
+                )}
+            </div>
+            <div style={styles.body}>
+                <h3 style={{ ...styles.title, opacity: disabled ? 0.6 : 1 }}>{app.name}</h3>
+                <p style={{ ...styles.description, opacity: disabled ? 0.4 : 1 }}>
+                    {app.description || "Experimental AI tool for laboratory testing."}
+                </p>
+            </div>
+            <div style={{
+                ...styles.footer,
+                opacity: isHovered && !disabled ? 1 : 0,
+                transform: isHovered && !disabled ? 'translateX(0)' : 'translateX(-8px)',
+            }}>
+                Launch App →
             </div>
         </div>
     );
@@ -42,60 +48,69 @@ const AppTile: React.FC<Props> = ({ app, onClick, disabled }) => {
 
 const styles = {
     container: {
-        background: theme.colors.surface,
-        borderRadius: theme.borderRadius.lg,
-        boxShadow: theme.shadows.card,
-        padding: "24px",
+        background: "var(--surface)",
+        borderRadius: "var(--radius-lg)",
+        padding: "32px",
         display: "flex",
         flexDirection: "column" as const,
-        alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "space-between",
         cursor: "pointer",
-        transition: theme.transitions.default,
-        border: `1px solid ${theme.colors.border}`,
-        width: "140px",
-        height: "140px",
-        userSelect: "none" as const,
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        border: "1px solid var(--border)",
+        height: "240px",
+        position: "relative" as const,
+        overflow: "hidden" as const,
     },
     containerHover: {
-        transform: "translateY(-4px)",
-        boxShadow: theme.shadows.hover,
-    },
-    containerActive: {
-        transform: "scale(0.96)",
+        transform: "translateY(-8px)",
+        boxShadow: "var(--shadow-hover)",
+        borderColor: "var(--primary)",
     },
     containerDisabled: {
-        background: "#f5f5f5",
+        background: "rgba(0,0,0,0.02)",
         cursor: "not-allowed",
-        border: `1px dashed ${theme.colors.border}`,
-        boxShadow: "none",
+        borderStyle: "dashed",
+    },
+    header: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
     },
     icon: {
-        fontSize: "48px",
-        marginBottom: "16px",
+        fontSize: "40px",
+        marginBottom: "20px",
+        transition: "transform 0.3s ease",
     },
-    content: {
-        display: "flex",
-        flexDirection: "column" as const,
-        alignItems: "center",
-        gap: "4px",
-    },
-    title: {
-        fontSize: "15px",
-        fontWeight: 600,
-        color: theme.colors.text,
-        textAlign: "center" as const,
-    },
-    lockedBadge: {
-        fontSize: "10px",
+    lockBadge: {
+        background: "var(--border)",
+        padding: "4px 8px",
+        borderRadius: "var(--radius-full)",
+        color: "var(--text-secondary)",
         fontWeight: 700,
         textTransform: "uppercase" as const,
-        color: theme.colors.textSecondary,
-        background: theme.colors.border,
-        padding: "2px 6px",
-        borderRadius: "4px",
-        marginTop: "4px",
     },
+    body: {
+        flex: 1,
+    },
+    title: {
+        fontSize: "1.25rem",
+        fontWeight: 700,
+        margin: "0 0 8px 0",
+        color: "var(--text)",
+    },
+    description: {
+        fontSize: "0.875rem",
+        color: "var(--text-secondary)",
+        lineHeight: 1.5,
+        margin: 0,
+    },
+    footer: {
+        marginTop: "20px",
+        fontSize: "0.875rem",
+        fontWeight: 600,
+        color: "var(--primary)",
+        transition: "all 0.3s ease",
+    }
 };
 
 export default AppTile;

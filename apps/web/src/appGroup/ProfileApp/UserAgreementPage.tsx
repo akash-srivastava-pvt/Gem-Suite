@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { theme } from '../../theme.js';
 import { userService } from '../../services/userService.js';
 
 interface Props {
@@ -30,19 +29,20 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
 
     return (
         <div style={styles.overlay}>
-            <div style={styles.card}>
-                <h2 style={styles.title}>User Agreement & Liability Notice</h2>
+            <div className="card" style={styles.card}>
+                <h2 style={{ textAlign: 'center', marginBottom: '8px' }}>User Agreement</h2>
+                <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>
+                    Liability and Data Privacy Notice
+                </p>
 
                 <div style={styles.agreementText}>
-                    <p>This application is a fully on-premise desktop system. All data, content, and generated artifacts remain strictly on your local machine.</p>
-                    <p>The application and its services do not collect, transmit, or store any personal data externally.</p>
-                    <p>By proceeding, you acknowledge that:</p>
-                    <ul>
-                        <li>You are solely responsible for the personal data you enter</li>
-                        <li>You understand that all AI-generated content is for assistance only</li>
-                        <li>You accept full responsibility for how generated content is used</li>
+                    <p>This is a strictly on-premise system. All data and AI-generated artifacts are stored locally on your device.</p>
+                    <p>By using this workspace, you acknowledge:</p>
+                    <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>
+                        <li>Data residency is restricted to this machine.</li>
+                        <li>AI outputs are for professional assistance and require user validation.</li>
+                        <li>Aryavarta Labs is not liable for data loss or misuse of generated content.</li>
                     </ul>
-                    <p>By entering your name below, you agree to these terms.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} style={styles.form}>
@@ -51,17 +51,16 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
                             type="checkbox"
                             checked={agreed}
                             onChange={(e) => setAgreed(e.target.checked)}
-                            style={styles.checkbox}
                         />
-                        <span style={styles.checkboxLabel}>I agree to the terms above</span>
+                        <span style={styles.checkboxLabel}>I accept the workspace policy</span>
                     </label>
 
                     <input
                         type="text"
-                        placeholder="Enter your full name"
+                        placeholder="Confirm your full name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        style={styles.input}
+                        style={{ width: '100%' }}
                         disabled={loading}
                     />
 
@@ -69,14 +68,11 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
 
                     <button
                         type="submit"
+                        className="primary-btn"
                         disabled={!agreed || !name.trim() || loading}
-                        style={{
-                            ...styles.button,
-                            opacity: (!agreed || !name.trim() || loading) ? 0.5 : 1,
-                            cursor: (!agreed || !name.trim() || loading) ? 'not-allowed' : 'pointer',
-                        }}
+                        style={{ width: '100%', padding: '0.8rem' }}
                     >
-                        {loading ? 'Processing...' : 'Agree & Proceed'}
+                        {loading ? 'Finalising Setup...' : 'Accept & Initialise Workspace'}
                     </button>
                 </form>
             </div>
@@ -86,82 +82,45 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
 
 const styles = {
     overlay: {
-        padding: '40px',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100%',
-        background: theme.colors.background,
+        padding: '24px',
     },
     card: {
-        background: theme.colors.surface,
-        padding: '32px',
-        borderRadius: theme.borderRadius.lg,
-        boxShadow: theme.shadows.hover,
-        maxWidth: '500px',
+        padding: '40px',
+        maxWidth: '540px',
         width: '100%',
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '24px',
-    },
-    title: {
-        fontSize: '24px',
-        fontWeight: 700,
-        color: theme.colors.primary,
-        margin: 0,
-        textAlign: 'center' as const,
     },
     agreementText: {
-        maxHeight: '300px',
-        overflowY: 'auto' as const,
-        fontSize: '14px',
-        color: theme.colors.textSecondary,
+        fontSize: '0.875rem',
+        color: 'var(--text-secondary)',
         lineHeight: '1.6',
-        padding: '16px',
-        backgroundColor: theme.colors.background,
-        borderRadius: theme.borderRadius.md,
-        border: `1px solid ${theme.colors.border}`,
+        padding: '20px',
+        backgroundColor: 'var(--background)',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border)',
+        marginBottom: '24px',
     },
     form: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '16px',
+        gap: '20px',
     },
     checkboxContainer: {
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: '10px',
         cursor: 'pointer',
     },
-    checkbox: {
-        width: '18px',
-        height: '18px',
-    },
     checkboxLabel: {
-        fontSize: '14px',
-        color: theme.colors.text,
-    },
-    input: {
-        padding: '12px 16px',
-        borderRadius: theme.borderRadius.sm,
-        border: `1px solid ${theme.colors.border}`,
-        fontSize: '16px',
-        outline: 'none',
-        transition: theme.transitions.default,
-    },
-    button: {
-        padding: '14px',
-        borderRadius: theme.borderRadius.sm,
-        background: theme.colors.primary,
-        color: '#fff',
-        border: 'none',
-        fontSize: '16px',
-        fontWeight: 600,
-        transition: theme.transitions.default,
+        fontSize: '0.875rem',
+        color: 'var(--text)',
     },
     error: {
-        color: '#d32f2f',
-        fontSize: '12px',
+        color: 'var(--error)',
+        fontSize: '0.75rem',
         margin: 0,
     },
 };

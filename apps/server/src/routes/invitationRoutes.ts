@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { WeddingInvitationController } from '../controllers/weddingInvitationController.js';
+import { WeddingInvitationController as invitationController } from '../controllers/weddingInvitationController.js';
 
 const router: Router = Router();
 
 // Invitation routes
 router.post(
     '/wedding',
-    WeddingInvitationController
+    invitationController
 );
 
 export default router;

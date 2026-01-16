@@ -29,14 +29,21 @@ A next-generation writing environment that feels like a clean page but works lik
 *   **Drafting Commands**: Use "//@" commands to tell the AI to write entire paragraphs or drafts on your behalf.
 *   **Distraction-Free**: Premium typography and a sleek interface that keeps you focused on your craft.
 
+### 📝 Gem Vivarad: The ATS-Optimized Resume Maker
+A powerful assistant that transforms your raw experience into an ATS-friendly, professionally formatted resume.
+*   **Smart Transformation**: Converts your structured resume data into an ATS-optimized, keyword-rich JSON.
+*   **Dynamic Preview**: Instantly preview your transformed resume in a clean UI.
+*   **Flexible Exports**: Download your resume in various PDF formats: Standard, LaTeX-based, and Premium templates.
+*   **Privacy-First**: Ensures strict PII separation during AI processing, keeping your personal data secure.
+
 ---
 
 ## 🛠️ Technical Prowess & Production Standards
 
 ### Leveraging Gemini 3
 The suite is architected to exploit the multi-modal and long-context capabilities of **Gemini 3**.
-*   **Structured Reasoning**: Every interaction uses high-reasoning prompts that return deterministic, schema-validated JSON for complex tasks like route planning.
-*   **Low Latency**: Optimized stream-handling and local caching ensure the AI feels "alive" and responsive.
+*   **Structured Reasoning**: Every interaction uses high-reasoning prompts that return deterministic, schema-validated JSON for complex tasks like resume generation, ensuring ATS compliance and template readiness.
+*   **Low Latency**: Optimized stream-handling and intelligent data transformation (including an adapter pattern for UI compatibility) ensure the AI feels "alive" and responsive, especially for complex workflows like resume creation.
 
 ### A Production-Grade Ecosystem
 *   **Local-First Architecture**: Features a local Express server and a high-performance **SQLite (WASM)** database (`packages/db`). Your data is handled with production-level persistence.

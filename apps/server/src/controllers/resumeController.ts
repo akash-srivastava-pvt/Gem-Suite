@@ -1,8 +1,52 @@
 import { Request, Response } from "express";
 import { ResumeService } from "../services/ResumeService.js";
 import { AnonymisationService } from "../services/AnonymisationService.js";
-import { GeminiTransformService } from "../services/GeminiTransformService.js";
 import { AuditLogService } from "../services/AuditLogService.js";
+import { agentOrchestrator } from "../orchestration/agentOrchestrator.js";
+import { resumeMakerWorkflow } from "../orchestration/workflows.js";
+import { GeminiTransformService } from "../services/GeminiTransformService.js";
+
+/**
+ * Transform resume data from agent format to UI-expected format
+ */
+function transformResumeToUIFormat(data: any): any {
+    // Transform structured AI output into flat UI-expected format
+    const name = data.header?.name || '';
+    const contacts = data.header?.contacts || [];
+    const links = data.header?.links || [];
+    const summary = data.summary || '';
+
+    const skills = [
+        ...(data.skills?.Frontend || []),
+        ...(data.skills?.Backend || []),
+        ...(data.skills?.Tools || []),
+    ];
+
+    const work_experience = Array.isArray(data.experience)
+        ? data.experience.map((exp: any) => ({
+            title: exp.role || '',
+            organization: exp.company || '',
+            duration: exp.duration || '',
+            highlights: Array.isArray(exp.description) ? exp.description : (exp.description ? exp.description.split('\n') : []),
+        }))
+        : [];
+
+    const education = data.education || [];
+    const projects = data.projects || [];
+
+    const result = {
+        name,
+        summary,
+        contacts,
+        links,
+        skills,
+        work_experience,
+        education,
+        projects,
+    };
+    
+    return result;
+}
 
 export const ResumeController = {
     async getResume(req: Request, res: Response) {
@@ -55,13 +99,41 @@ export const ResumeController = {
             AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
-            AuditLogService.log("Data sent to Gemini", "RESUME_ATS", false, "SUCCESS");
-            const geminiResult = await GeminiTransformService.generateATSResume(anonymisedData);
+            AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
+            
+            // Execute workflow with MCP/A2A
+            const result = await agentOrchestrator.executeWorkflow(resumeMakerWorkflow, {
+                anonymisedData,
+                jobDescription: data.jobDescription,
+                industry: data.industry
+            });
 
-            AuditLogService.log("Gemini response received", "RESUME_ATS", false, "SUCCESS");
-            const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+            // Use the formatted result as base (it has the correct UI structure)
+            // If format step failed, fall back to previous steps and transform manually
+            let geminiResult = result.results.format;
+            
+            if (!geminiResult) {
+                // If format failed, use the last successful step and transform it
+                const lastResult = result.results.ats || result.results.grammar || result.results.draft;
+                if (!lastResult) {
+                    // If no results at all, check errors
+                    const errorMessages = result.errors ? Object.entries(result.errors)
+                        .map(([step, err]: [string, any]) => `${step}: ${err.message || String(err)}`)
+                        .join(', ') : 'Unknown error';
+                    throw new Error(`Workflow failed - no results: ${errorMessages}`);
+                }
+                
+                // Transform the result to UI format
+                geminiResult = lastResult;
+            }
+            AuditLogService.log("Resume workflow completed", "RESUME_ATS", false, "SUCCESS");
+            
+            // Always transform the Gemini result to UI format before reinserting PII
+            const uiFormattedResult = transformResumeToUIFormat(geminiResult);
 
+            const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
             AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
+            
             res.json(finalResult);
         } catch (error: any) {
             AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");

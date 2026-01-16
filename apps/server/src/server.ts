@@ -17,6 +17,7 @@ const SERVER_DIR = typeof __dirname !== 'undefined'
 import { db } from '@gem/db';
 import { apiRouter } from './routes/index.js';
 import { LoggerModel } from './models/loggerModel.js';
+import { registerAllAgents } from './agents/index.js';
 
 // ============================================
 // SERVER STARTUP
@@ -27,6 +28,10 @@ async function startServer() {
     console.log('⏳ Initializing database...');
     await db.init();
     console.log('✅ Database ready');
+
+    console.log('⏳ Registering agents...');
+    registerAllAgents();
+    console.log('✅ Agents registered');
 
     const app: Express = express();
 

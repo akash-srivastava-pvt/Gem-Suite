@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey, callGeminiImageWithUserPreference } from '../utility/helper.js';
-import { buildInvitationPrompt } from '../agents/wedding.invitation.agent.js';
+import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
+import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
+import { invitationMakerWorkflow } from '../orchestration/workflows.js';
 
 export async function WeddingInvitationController(
     req: Request,
@@ -51,9 +52,11 @@ export async function WeddingInvitationController(
         }
 
         // ─────────────────────────────────────────
-        // 3. Build Gemini Image Prompt
+        // 3. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
-        const prompt = buildInvitationPrompt({
+        LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
+
+        const invitationData = {
             theme: 'wedding',
             groomName,
             brideName,
@@ -64,30 +67,46 @@ export async function WeddingInvitationController(
             language,
             familyDetails: data.familyDetails,
             rsvpContact: data.rsvpContact,
+        };
+
+        const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
+            data: invitationData,
+            theme: 'wedding'
         });
 
-        // ─────────────────────────────────────────
-        // 4. Call Gemini (IMAGE)
-        // ─────────────────────────────────────────
-        const geminiResponse = await callGeminiImageWithUserPreference(apiKey, prompt);
+        if (!result.success) {
+            console.error('Workflow errors:', result.errors);
+            return res.status(500).json({
+                error: 'Invitation generation workflow failed',
+                details: result.errors
+            });
+        }
 
-        LoggerModel.log(`Gemini API called for wedding invitation generation: ${groomName} & ${brideName}`);
-
-        if (!geminiResponse?.image?.base64) {
+        const finalResult = {
+            ...result.results.design,
+            ...result.results.localization,
+            ...result.results.quality
+        };
+        
+        if (!finalResult?.image?.base64) {
             return res.status(502).json({
                 error: 'Gemini did not return an image',
             });
         }
 
+        LoggerModel.log(`Invitation generation completed: ${groomName} & ${brideName}`);
+
         // ─────────────────────────────────────────
-        // 5. Success Response
+        // 4. Success Response
         // ─────────────────────────────────────────
         return res.status(200).json({
             success: true,
             image: {
-                mimeType: geminiResponse.image.mimeType,
-                base64: geminiResponse.image.base64,
+                mimeType: finalResult.image.mimeType,
+                base64: finalResult.image.base64,
             },
+            ...(finalResult.validation && { validation: finalResult.validation }),
+            ...(finalResult.localization && { localization: finalResult.localization })
         });
 
     } catch (error: any) {
@@ -103,4 +122,4 @@ export async function WeddingInvitationController(
             });
         }
     }
-}
+};

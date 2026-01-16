@@ -7,7 +7,7 @@ const Home: React.FC = () => {
 
     return (
         <ShellProvider>
-            <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <Shell apps={apps} />
             </div>
         </ShellProvider>

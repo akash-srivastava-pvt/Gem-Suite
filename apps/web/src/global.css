@@ -38,7 +38,7 @@ body {
     color: var(--text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow: hidden;
+    overflow: auto; /* Changed to auto to allow body scroll as content expands */
     /* Desktop apps usually prevent body scroll */
 }
 

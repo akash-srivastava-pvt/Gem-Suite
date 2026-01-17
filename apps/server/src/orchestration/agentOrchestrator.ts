@@ -20,7 +20,7 @@ class AgentOrchestrator {
     const executedSteps = new Set<string>();
 
     // Get MCP context for the workflow
-    const mcpContext = mcpServer.getContext(workflow.id.split('-')[0]);
+    const mcpContext = mcpServer.getContext(workflow.id.replace('-workflow', ''));
 
     try {
       // Execute steps in dependency order

@@ -1,0 +1,129 @@
+import { Request, Response } from 'express';
+import { ValidationError } from '../utility/errors.js';
+import { getApiKey } from '../utility/helper.js';
+import { LoggerModel } from '../models/loggerModel.js';
+import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
+import { invitationMakerWorkflow } from '../orchestration/workflows.js';
+
+export async function EventInvitationController(
+    req: Request,
+    res: Response
+) {
+    try {
+        const { data } = req.body;
+
+        // ─────────────────────────────────────────
+        // 1. Basic Validations
+        // ─────────────────────────────────────────
+        if (!data) {
+            return res.status(400).json({ error: 'Request data is required' });
+        }
+
+        const {
+            eventName,
+            theme,
+            date,
+            venue,
+            language,
+            religion,
+        } = data;
+
+        if (!eventName) {
+            return res
+                .status(400)
+                .json({ error: 'Event name is required' });
+        }
+
+        if (!theme) {
+            return res
+                .status(400)
+                .json({ error: 'Event theme is required' });
+        }
+
+        if (!date || !venue) {
+            return res
+                .status(400)
+                .json({ error: 'Date and venue are required' });
+        }
+
+        // ─────────────────────────────────────────
+        // 2. API Key Retrieval
+        // ─────────────────────────────────────────
+        const apiKey = await getApiKey();
+        if (!apiKey) {
+            return res.status(401).json({
+                error: 'Gemini API key not found. Please activate first.',
+            });
+        }
+
+        // ─────────────────────────────────────────
+        // 3. Execute Workflow with MCP/A2A
+        // ─────────────────────────────────────────
+        LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+
+        const invitationData = {
+            theme: 'event',
+            eventName,
+            eventType: theme,
+            date,
+            venue,
+            language,
+            religion,
+            description: data.description,
+            rsvpContact: data['RSVP Contact'],
+        };
+
+        const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
+            data: invitationData,
+            theme: 'event'
+        });
+
+        if (!result.success) {
+            console.error('Workflow errors:', result.errors);
+            return res.status(500).json({
+                error: 'Event invitation generation workflow failed',
+                details: result.errors
+            });
+        }
+
+        const finalResult = {
+            ...result.results.design,
+            ...result.results.localization,
+            ...result.results.quality
+        };
+
+        if (!finalResult?.image?.base64) {
+            return res.status(502).json({
+                error: 'Gemini did not return an image',
+            });
+        }
+
+        LoggerModel.log(`Event invitation generation completed: ${eventName}`);
+
+        // ─────────────────────────────────────────
+        // 4. Success Response
+        // ─────────────────────────────────────────
+        return res.status(200).json({
+            success: true,
+            image: {
+                mimeType: finalResult.image.mimeType,
+                base64: finalResult.image.base64,
+            },
+            ...(finalResult.validation && { validation: finalResult.validation }),
+            ...(finalResult.localization && { localization: finalResult.localization })
+        });
+
+    } catch (error: any) {
+        console.error('Event invitation generation failed:', error);
+
+        if (error instanceof ValidationError) {
+            return res.status(400).json({ error: error.message });
+        }
+
+        if (!res.headersSent) {
+            return res.status(500).json({
+                error: 'Internal Server Error during event invitation generation',
+            });
+        }
+    }
+};

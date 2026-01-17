@@ -28,7 +28,7 @@ export const DesignTool: MCPTool = {
       },
       theme: {
         type: 'string',
-        enum: ['wedding', 'mundan', 'festival', 'religious', 'sokh_sabha'],
+        enum: ['wedding', 'event', 'greetings', 'mundan', 'festival', 'religious', 'sokh_sabha', 'birthday', 'technical_event', 'social_event', 'college_event'],
         description: 'Event theme'
       }
     },
@@ -216,6 +216,42 @@ function getDesignTemplates(theme: string): {
       elements: ['Speaker name', 'Topic', 'Date and time', 'Venue'],
       style: 'Professional and informative',
       recommendations: ['Clear typography', 'Minimal design', 'Focus on information']
+    },
+    event: {
+      layout: 'Vertical or horizontal card format',
+      elements: ['Event name', 'Event type', 'Date and time', 'Venue', 'Description'],
+      style: 'Modern and engaging',
+      recommendations: ['Use event-specific colors', 'Include relevant icons', 'Clear call-to-action']
+    },
+    greetings: {
+      layout: 'Square or vertical card format',
+      elements: ['Greeting message', 'Date', 'Sender name', 'Decorative elements'],
+      style: 'Warm and personal',
+      recommendations: ['Use soft colors', 'Include handwritten-style fonts', 'Personal touch elements']
+    },
+    birthday: {
+      layout: 'Fun and celebratory vertical card',
+      elements: ['Happy Birthday message', 'Recipient name', 'Date', 'Decorative elements'],
+      style: 'Playful and festive',
+      recommendations: ['Bright colors', 'Balloon motifs', 'Cake illustrations', 'Party-themed elements']
+    },
+    technical_event: {
+      layout: 'Modern horizontal or vertical card',
+      elements: ['Event title', 'Tech focus', 'Date and time', 'Venue', 'Key speakers/topics'],
+      style: 'Professional and tech-forward',
+      recommendations: ['Digital motifs', 'Circuit patterns', 'Clean typography', 'Innovative colors']
+    },
+    social_event: {
+      layout: 'Elegant vertical card',
+      elements: ['Event name', 'Date and time', 'Venue', 'Dress code', 'RSVP info'],
+      style: 'Sophisticated and modern',
+      recommendations: ['Elegant fonts', 'Subtle patterns', 'Contemporary design', 'Social media friendly']
+    },
+    college_event: {
+      layout: 'Youthful and energetic vertical card',
+      elements: ['Event name', 'College/School', 'Date and time', 'Venue', 'Theme'],
+      style: 'Fun and youthful',
+      recommendations: ['Bold colors', 'Modern fonts', 'Youth-oriented motifs', 'Social elements']
     }
   };
 
@@ -272,6 +308,52 @@ function getColorScheme(religion: string, theme: string): {
     }
   };
 
+  // Handle theme-specific color schemes (for events and greetings)
+  const themeSchemes: Record<string, any> = {
+    event: {
+      primary: ['#3B82F6', '#1E40AF'], // Blue tones
+      secondary: ['#60A5FA', '#93C5FD'],
+      accent: ['#FFFFFF', '#FFD700'],
+      description: 'Modern blue tones for general events'
+    },
+    greetings: {
+      primary: ['#F59E0B', '#D97706'], // Warm orange/yellow
+      secondary: ['#FCD34D', '#FDE68A'],
+      accent: ['#FFFFFF', '#DC2626'],
+      description: 'Warm and inviting colors for greetings'
+    },
+    birthday: {
+      primary: ['#EC4899', '#BE185D'], // Pink/Magenta
+      secondary: ['#F472B6', '#F9A8D4'],
+      accent: ['#FFFFFF', '#FFD700'],
+      description: 'Celebratory pink and gold for birthdays'
+    },
+    technical_event: {
+      primary: ['#10B981', '#059669'], // Green tones
+      secondary: ['#34D399', '#6EE7B7'],
+      accent: ['#FFFFFF', '#3B82F6'],
+      description: 'Tech-inspired green and blue colors'
+    },
+    social_event: {
+      primary: ['#8B5CF6', '#7C3AED'], // Purple tones
+      secondary: ['#A78BFA', '#C4B5FD'],
+      accent: ['#FFFFFF', '#F59E0B'],
+      description: 'Sophisticated purple for social gatherings'
+    },
+    college_event: {
+      primary: ['#F97316', '#EA580C'], // Orange tones
+      secondary: ['#FB923C', '#FED7AA'],
+      accent: ['#FFFFFF', '#3B82F6'],
+      description: 'Energetic orange for youth events'
+    }
+  };
+
+  // Check if it's a theme-specific scheme first
+  if (themeSchemes[theme.toLowerCase()]) {
+    return themeSchemes[theme.toLowerCase()];
+  }
+
+  // Fall back to religion + theme scheme
   const religionSchemes = schemes[religion.toLowerCase()] || schemes.hindu;
   return religionSchemes[theme.toLowerCase()] || religionSchemes.wedding || {
     primary: ['#000000', '#FFFFFF'],

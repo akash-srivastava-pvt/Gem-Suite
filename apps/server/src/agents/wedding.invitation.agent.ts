@@ -1,4 +1,4 @@
-import { InvitationInput } from '@gem/shared';
+import { WeddingInvitation } from '@gem/shared';
 
 function religionStyle(religion?: string) {
     switch (religion) {
@@ -21,7 +21,7 @@ function languageInstruction(language?: string) {
     return 'All text must be in English';
 }
 
-export function buildInvitationPrompt(data: InvitationInput): string {
+export function buildInvitationPrompt(data: WeddingInvitation): string {
     return `
 Create a vertical wedding invitation card.
 

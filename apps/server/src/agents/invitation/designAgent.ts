@@ -7,6 +7,8 @@ import { mcpServer } from '../../mcp/mcpServer.js';
 import { callGeminiImageWithUserPreference } from '../../utility/helper.js';
 import { getApiKey } from '../../utility/helper.js';
 import { buildInvitationPrompt } from '../wedding.invitation.agent.js';
+import { buildEventInvitationPrompt } from '../event.invitation.agent.js';
+import { buildGreetingInvitationPrompt } from '../greeting.invitation.agent.js';
 
 export const DesignAgent: Agent = {
   id: 'invitation-design-agent',
@@ -32,8 +34,12 @@ export const DesignAgent: Agent = {
       theme: theme || 'wedding'
     });
 
-    // Enhance prompt with MCP context
-    const basePrompt = buildInvitationPrompt(data);
+    // Choose appropriate prompt builder based on theme
+    const basePrompt = theme === 'event'
+      ? buildEventInvitationPrompt(data)
+      : theme === 'greetings'
+      ? buildGreetingInvitationPrompt(data)
+      : buildInvitationPrompt(data);
     const enhancedPrompt = `
 ${basePrompt}
 

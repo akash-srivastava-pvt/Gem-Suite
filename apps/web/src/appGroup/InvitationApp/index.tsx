@@ -123,6 +123,7 @@ export const InvitationApp = () => {
                             loading={wizard.state.loading}
                             onGenerate={wizard.generate}
                             onBack={wizard.back}
+                            invitationTheme={wizard.state.theme}
                         />
                     )}
                 </div>

@@ -1485,7 +1485,7 @@ var DesignTool = {
       },
       theme: {
         type: "string",
-        enum: ["wedding", "mundan", "festival", "religious", "sokh_sabha"],
+        enum: ["wedding", "event", "greetings", "mundan", "festival", "religious", "sokh_sabha", "birthday", "technical_event", "social_event", "college_event"],
         description: "Event theme"
       }
     },
@@ -1639,6 +1639,42 @@ function getDesignTemplates(theme) {
       elements: ["Speaker name", "Topic", "Date and time", "Venue"],
       style: "Professional and informative",
       recommendations: ["Clear typography", "Minimal design", "Focus on information"]
+    },
+    event: {
+      layout: "Vertical or horizontal card format",
+      elements: ["Event name", "Event type", "Date and time", "Venue", "Description"],
+      style: "Modern and engaging",
+      recommendations: ["Use event-specific colors", "Include relevant icons", "Clear call-to-action"]
+    },
+    greetings: {
+      layout: "Square or vertical card format",
+      elements: ["Greeting message", "Date", "Sender name", "Decorative elements"],
+      style: "Warm and personal",
+      recommendations: ["Use soft colors", "Include handwritten-style fonts", "Personal touch elements"]
+    },
+    birthday: {
+      layout: "Fun and celebratory vertical card",
+      elements: ["Happy Birthday message", "Recipient name", "Date", "Decorative elements"],
+      style: "Playful and festive",
+      recommendations: ["Bright colors", "Balloon motifs", "Cake illustrations", "Party-themed elements"]
+    },
+    technical_event: {
+      layout: "Modern horizontal or vertical card",
+      elements: ["Event title", "Tech focus", "Date and time", "Venue", "Key speakers/topics"],
+      style: "Professional and tech-forward",
+      recommendations: ["Digital motifs", "Circuit patterns", "Clean typography", "Innovative colors"]
+    },
+    social_event: {
+      layout: "Elegant vertical card",
+      elements: ["Event name", "Date and time", "Venue", "Dress code", "RSVP info"],
+      style: "Sophisticated and modern",
+      recommendations: ["Elegant fonts", "Subtle patterns", "Contemporary design", "Social media friendly"]
+    },
+    college_event: {
+      layout: "Youthful and energetic vertical card",
+      elements: ["Event name", "College/School", "Date and time", "Venue", "Theme"],
+      style: "Fun and youthful",
+      recommendations: ["Bold colors", "Modern fonts", "Youth-oriented motifs", "Social elements"]
     }
   };
   return templates[theme.toLowerCase()] || templates.wedding;
@@ -1688,6 +1724,53 @@ function getColorScheme(religion, theme) {
       }
     }
   };
+  const themeSchemes = {
+    event: {
+      primary: ["#3B82F6", "#1E40AF"],
+      // Blue tones
+      secondary: ["#60A5FA", "#93C5FD"],
+      accent: ["#FFFFFF", "#FFD700"],
+      description: "Modern blue tones for general events"
+    },
+    greetings: {
+      primary: ["#F59E0B", "#D97706"],
+      // Warm orange/yellow
+      secondary: ["#FCD34D", "#FDE68A"],
+      accent: ["#FFFFFF", "#DC2626"],
+      description: "Warm and inviting colors for greetings"
+    },
+    birthday: {
+      primary: ["#EC4899", "#BE185D"],
+      // Pink/Magenta
+      secondary: ["#F472B6", "#F9A8D4"],
+      accent: ["#FFFFFF", "#FFD700"],
+      description: "Celebratory pink and gold for birthdays"
+    },
+    technical_event: {
+      primary: ["#10B981", "#059669"],
+      // Green tones
+      secondary: ["#34D399", "#6EE7B7"],
+      accent: ["#FFFFFF", "#3B82F6"],
+      description: "Tech-inspired green and blue colors"
+    },
+    social_event: {
+      primary: ["#8B5CF6", "#7C3AED"],
+      // Purple tones
+      secondary: ["#A78BFA", "#C4B5FD"],
+      accent: ["#FFFFFF", "#F59E0B"],
+      description: "Sophisticated purple for social gatherings"
+    },
+    college_event: {
+      primary: ["#F97316", "#EA580C"],
+      // Orange tones
+      secondary: ["#FB923C", "#FED7AA"],
+      accent: ["#FFFFFF", "#3B82F6"],
+      description: "Energetic orange for youth events"
+    }
+  };
+  if (themeSchemes[theme.toLowerCase()]) {
+    return themeSchemes[theme.toLowerCase()];
+  }
   const religionSchemes = schemes[religion.toLowerCase()] || schemes.hindu;
   return religionSchemes[theme.toLowerCase()] || religionSchemes.wedding || {
     primary: ["#000000", "#FFFFFF"],
@@ -1843,7 +1926,7 @@ var AgentOrchestrator = class {
     };
     const errors = {};
     const executedSteps = /* @__PURE__ */ new Set();
-    const mcpContext = mcpServer.getContext(workflow.id.split("-")[0]);
+    const mcpContext = mcpServer.getContext(workflow.id.replace("-workflow", ""));
     try {
       const stepsToExecute = [...workflow.steps];
       while (stepsToExecute.length > 0) {
@@ -2356,11 +2439,192 @@ async function WeddingInvitationController(req, res) {
   }
 }
 
+// src/controllers/eventInvitationController.ts
+async function EventInvitationController(req, res) {
+  try {
+    const { data } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: "Request data is required" });
+    }
+    const {
+      eventName,
+      theme,
+      date,
+      venue,
+      language,
+      religion
+    } = data;
+    if (!eventName) {
+      return res.status(400).json({ error: "Event name is required" });
+    }
+    if (!theme) {
+      return res.status(400).json({ error: "Event theme is required" });
+    }
+    if (!date || !venue) {
+      return res.status(400).json({ error: "Date and venue are required" });
+    }
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return res.status(401).json({
+        error: "Gemini API key not found. Please activate first."
+      });
+    }
+    LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+    const invitationData = {
+      theme: "event",
+      eventName,
+      eventType: theme,
+      date,
+      venue,
+      language,
+      religion,
+      description: data.description,
+      rsvpContact: data["RSVP Contact"]
+    };
+    const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
+      data: invitationData,
+      theme: "event"
+    });
+    if (!result.success) {
+      console.error("Workflow errors:", result.errors);
+      return res.status(500).json({
+        error: "Event invitation generation workflow failed",
+        details: result.errors
+      });
+    }
+    const finalResult = {
+      ...result.results.design,
+      ...result.results.localization,
+      ...result.results.quality
+    };
+    if (!finalResult?.image?.base64) {
+      return res.status(502).json({
+        error: "Gemini did not return an image"
+      });
+    }
+    LoggerModel.log(`Event invitation generation completed: ${eventName}`);
+    return res.status(200).json({
+      success: true,
+      image: {
+        mimeType: finalResult.image.mimeType,
+        base64: finalResult.image.base64
+      },
+      ...finalResult.validation && { validation: finalResult.validation },
+      ...finalResult.localization && { localization: finalResult.localization }
+    });
+  } catch (error) {
+    console.error("Event invitation generation failed:", error);
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Internal Server Error during event invitation generation"
+      });
+    }
+  }
+}
+
+// src/controllers/greetingInvitationController.ts
+async function GreetingInvitationController(req, res) {
+  try {
+    const { data } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: "Request data is required" });
+    }
+    const {
+      greeting,
+      theme,
+      date,
+      language,
+      religion
+    } = data;
+    const fromName = data["fromName "] || data.fromName;
+    if (!greeting || greeting.trim() === "") {
+      return res.status(400).json({ error: "Greeting message is required" });
+    }
+    if (!theme || theme.trim() === "") {
+      return res.status(400).json({ error: "Greeting theme is required" });
+    }
+    if (!date || date.trim() === "") {
+      return res.status(400).json({ error: "Date is required" });
+    }
+    if (!fromName || fromName.trim() === "") {
+      return res.status(400).json({ error: "From name is required" });
+    }
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return res.status(401).json({
+        error: "Gemini API key not found. Please activate first."
+      });
+    }
+    LoggerModel.log(`Starting greeting card generation workflow: ${greeting}`);
+    const invitationData = {
+      theme: "greetings",
+      greetingType: theme,
+      greeting,
+      date,
+      fromName,
+      language,
+      religion
+    };
+    const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
+      data: invitationData,
+      theme: "greetings"
+    });
+    if (!result.success) {
+      console.error("Workflow errors:", result.errors);
+      return res.status(500).json({
+        error: "Greeting card generation workflow failed",
+        details: result.errors
+      });
+    }
+    const finalResult = {
+      ...result.results.design,
+      ...result.results.localization,
+      ...result.results.quality
+    };
+    if (!finalResult?.image?.base64) {
+      return res.status(502).json({
+        error: "Gemini did not return an image"
+      });
+    }
+    LoggerModel.log(`Greeting card generation completed: ${greeting}`);
+    return res.status(200).json({
+      success: true,
+      image: {
+        mimeType: finalResult.image.mimeType,
+        base64: finalResult.image.base64
+      },
+      ...finalResult.validation && { validation: finalResult.validation },
+      ...finalResult.localization && { localization: finalResult.localization }
+    });
+  } catch (error) {
+    console.error("Greeting card generation failed:", error);
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "Internal Server Error during greeting card generation"
+      });
+    }
+  }
+}
+
 // src/routes/invitationRoutes.ts
 var router4 = (0, import_express4.Router)();
 router4.post(
   "/wedding",
   WeddingInvitationController
+);
+router4.post(
+  "/event",
+  EventInvitationController
+);
+router4.post(
+  "/greetings",
+  GreetingInvitationController
 );
 var invitationRoutes_default = router4;
 
@@ -2779,6 +3043,39 @@ var ResumeController = {
       }
       AuditLogService.log("Resume workflow completed", "RESUME_ATS", false, "SUCCESS");
       const uiFormattedResult = transformResumeToUIFormat(geminiResult);
+      console.log("Original anonymised data sections:", {
+        education: anonymisedData.education?.length || 0,
+        work_history: anonymisedData.work_history?.length || 0,
+        personal_projects: anonymisedData.personal_projects?.length || 0,
+        skills: anonymisedData.skills?.length || 0
+      });
+      console.log("AI result sections:", {
+        education: uiFormattedResult.education?.length || 0,
+        work_experience: uiFormattedResult.work_experience?.length || 0,
+        projects: uiFormattedResult.projects?.length || 0,
+        skills: uiFormattedResult.skills?.length || 0
+      });
+      if ((!uiFormattedResult.education || uiFormattedResult.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
+        console.log("Preserving original education data");
+        uiFormattedResult.education = anonymisedData.education;
+      }
+      if ((!uiFormattedResult.work_experience || uiFormattedResult.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
+        console.log("Preserving original work history data");
+        uiFormattedResult.work_experience = anonymisedData.work_history.map((exp) => ({
+          title: exp.role || "",
+          organization: exp.company || "",
+          duration: exp.duration || "",
+          highlights: Array.isArray(exp.description) ? exp.description : exp.description ? exp.description.split("\n") : []
+        }));
+      }
+      if ((!uiFormattedResult.projects || uiFormattedResult.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
+        console.log("Preserving original projects data");
+        uiFormattedResult.projects = anonymisedData.personal_projects;
+      }
+      if ((!uiFormattedResult.skills || uiFormattedResult.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
+        console.log("Preserving original skills data");
+        uiFormattedResult.skills = anonymisedData.skills;
+      }
       const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
       AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
       res.json(finalResult);
@@ -3637,6 +3934,103 @@ Output:
 `;
 }
 
+// src/agents/event.invitation.agent.ts
+function eventTypeStyle(eventType) {
+  switch (eventType?.toLowerCase()) {
+    case "birthday":
+      return "Celebratory birthday design with balloons, cake motifs, and festive colors";
+    case "festival":
+      return "Traditional festival motifs, cultural decorations, and festive elements";
+    case "religious":
+      return "Sacred religious symbols, traditional motifs, and spiritual colors";
+    case "technical_event":
+      return "Modern tech design with digital elements, code patterns, and innovative layouts";
+    case "social_event":
+      return "Elegant social gathering design with modern elements and sophisticated styling";
+    case "college_event":
+      return "Youthful college event design with energetic colors and contemporary elements";
+    default:
+      return "Elegant event invitation design with modern and clean aesthetics";
+  }
+}
+function languageInstruction2(language) {
+  if (language === "hindi")
+    return "All text must be in Hindi (Devanagari script)";
+  if (language === "urdu")
+    return "All text must be in Urdu (Nastaliq script)";
+  return "All text must be in English";
+}
+function buildEventInvitationPrompt(data) {
+  return `
+Create a vertical event invitation card.
+
+Style:
+- ${eventTypeStyle(data.eventType)}
+- Premium, clean, print-ready
+- No spelling mistakes
+- No watermark
+
+Language:
+- ${languageInstruction2(data.language)}
+
+Text content (exact):
+"${data.eventName}"
+Type: ${data.eventType}
+Date: ${data.date}
+Venue: ${data.venue}
+${data.description ? `Description: ${data.description}` : ""}
+${data.rsvpContact ? `RSVP: ${data.rsvpContact}` : ""}
+
+Output:
+- High-resolution PNG
+- Suitable for WhatsApp and print
+`;
+}
+
+// src/agents/greeting.invitation.agent.ts
+function greetingTypeStyle(greetingType) {
+  switch (greetingType?.toLowerCase()) {
+    case "birthday":
+      return "Celebratory birthday greeting design with balloons, cake motifs, and festive colors";
+    case "festival":
+      return "Traditional festival greeting design with cultural decorations and festive elements";
+    case "religious":
+      return "Sacred religious greeting design with traditional symbols and spiritual colors";
+    default:
+      return "Elegant greeting card design with clean and modern aesthetics";
+  }
+}
+function languageInstruction3(language) {
+  if (language === "hindi")
+    return "All text must be in Hindi (Devanagari script)";
+  if (language === "urdu")
+    return "All text must be in Urdu (Nastaliq script)";
+  return "All text must be in English";
+}
+function buildGreetingInvitationPrompt(data) {
+  return `
+Create a vertical greeting card.
+
+Style:
+- ${greetingTypeStyle(data.greetingType)}
+- Premium, clean, print-ready
+- No spelling mistakes
+- No watermark
+
+Language:
+- ${languageInstruction3(data.language)}
+
+Text content (exact):
+"${data.greeting}"
+Date: ${data.date}
+From: ${data.fromName}
+
+Output:
+- High-resolution PNG
+- Suitable for WhatsApp and print
+`;
+}
+
 // src/agents/invitation/designAgent.ts
 var DesignAgent = {
   id: "invitation-design-agent",
@@ -3657,7 +4051,7 @@ var DesignAgent = {
       religion: data.religion,
       theme: theme || "wedding"
     });
-    const basePrompt = buildInvitationPrompt(data);
+    const basePrompt = theme === "event" ? buildEventInvitationPrompt(data) : theme === "greetings" ? buildGreetingInvitationPrompt(data) : buildInvitationPrompt(data);
     const enhancedPrompt = `
 ${basePrompt}
 
@@ -3719,8 +4113,22 @@ var QualityAgent = {
   description: "Validates invitation quality and completeness",
   execute: async (input, context) => {
     const { data, image } = input;
+    let hasRequiredFields = false;
+    switch (input.theme) {
+      case "wedding":
+        hasRequiredFields = !!(data.groomName && data.brideName && data.date && data.time && data.venue);
+        break;
+      case "event":
+        hasRequiredFields = !!(data.eventName && data.eventType && data.date && data.venue);
+        break;
+      case "greetings":
+        hasRequiredFields = !!(data.greeting && data.date && data.fromName);
+        break;
+      default:
+        hasRequiredFields = !!(data.date && data.venue);
+    }
     const qualityChecks = {
-      hasRequiredFields: !!(data.groomName && data.brideName && data.date && data.time && data.venue),
+      hasRequiredFields,
       hasImage: !!image,
       languageConsistent: true,
       culturalAppropriate: true,

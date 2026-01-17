@@ -92,10 +92,9 @@ export type Language = 'english' | 'hindi' | 'urdu';
 
 export type InvitationTheme =
   | 'wedding'
-  | 'mundan'
-  | 'festival'
-  | 'religious'
-  | 'sokh_sabha';
+  | 'event'
+  | 'greetings'
+  | 'greetings';
 
 export interface BaseInvitation {
   theme: InvitationTheme;
@@ -114,7 +113,25 @@ export interface WeddingInvitation extends BaseInvitation {
   rsvpContact?: string;
 }
 
-export type InvitationInput = WeddingInvitation;
+export interface EventInvitation extends BaseInvitation {
+  theme: 'event';
+  eventType: string;
+  eventName: string;
+  date: string;
+  venue: string;
+  description?: string;
+  rsvpContact?: string;
+}
+
+export interface GreetingInvitation extends BaseInvitation {
+  theme: 'greetings';
+  greetingType: string;
+  greeting: string;
+  date: string;
+  fromName: string;
+}
+
+export type InvitationInput = WeddingInvitation | EventInvitation | GreetingInvitation;
 export const TITLES: Record<Language, string> = {
   english: 'Wedding Invitation',
   hindi: 'विवाह निमंत्रण',

@@ -8,6 +8,7 @@ import { StandardDocument } from './templates/StandardDocument.js';
 import ResizableLayout from '../../components/ResizableLayout.js';
 import { useShell } from '../../context/ShellContext.js';
 import { aiCache } from '../../utils/storage.js';
+import { LoadingAnimation } from '../components/LoadingAnimation.js';
 
 interface KeyValue {
     key: string;
@@ -185,18 +186,18 @@ export const ResumeMakerApp: React.FC = () => {
 
     const downloadPDF = () => {
         setShowTemplateModal(false);
-        const content = document.getElementById('pdf-render-hidden');
-        if (!content) return;
+        const element = document.getElementById('resume-preview');
+        if (!element) return;
 
         const opt = {
-            margin: 0,
+            margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number], // [top, left, bottom, right] in inches
             filename: `Gem_Vivarad_${activeTab}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
+            image: { type: 'jpeg' as const, quality: 0.98 },
             html2canvas: { scale: 2 },
-            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-        } as const;
+            jsPDF: { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
+        };
 
-        html2pdf().from(content).set(opt).save();
+        html2pdf().from(element).set(opt).save();
     };
 
     const getDocTitle = () => {
@@ -322,10 +323,10 @@ export const ResumeMakerApp: React.FC = () => {
 
             <div className="output-container">
                 {loading ? (
-                    <div className="loading-overlay">
-                        <div className="spinner"></div>
-                        <p>AI is generating your {getDocTitle()}...</p>
-                    </div>
+                    <LoadingAnimation
+                        app="resume"
+                        customMessage={`✨ AI is crafting your ${getDocTitle().toLowerCase()}...`}
+                    />
                 ) : generated[activeTab] ? (
                     <>
                         <div className="output-toolbar">
@@ -349,21 +350,13 @@ export const ResumeMakerApp: React.FC = () => {
                         <div className="editor-area" style={{ border: 'none', background: 'transparent', height: '100%', display: 'flex', flexDirection: 'column' }}>
                             {previewMode ? (
                                 <>
-                                    <div className="template-preview-wrapper" style={{ 
-                                        background: 'white', 
-                                        padding: '0.75in', 
+                                    <div id="resume-preview" className="template-preview-wrapper" style={{
+                                        background: 'white',
+                                        padding: '0.75in',
                                         overflowY: 'auto',
                                         flex: 1,
                                         minHeight: 0
                                     }}>
-                                        {activeTab === 'ats' ? (
-                                            selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
-                                        ) : (
-                                            <StandardDocument data={generated[activeTab]} title={getDocTitle()} />
-                                        )}
-                                    </div>
-                                    {/* Hidden element for PDF rendering */}
-                                    <div id="pdf-render-hidden" style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '8.5in', background: 'white', padding: '0.75in' }}>
                                         {activeTab === 'ats' ? (
                                             selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
                                         ) : (
@@ -431,16 +424,6 @@ export const ResumeMakerApp: React.FC = () => {
                 initialLeftWidth={500}
             />
 
-            {/* Hidden Render Area for PDF Export */}
-            <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-                <div id="pdf-render-hidden" style={{ width: '8.5in', background: 'white' }}>
-                    {activeTab === 'ats' ? (
-                        selectedTemplate === 'latex' ? <StandardLaTeX data={generated.ats} /> : <PremiumModern data={generated.ats} />
-                    ) : (
-                        <StandardDocument data={generated[activeTab]} title={getDocTitle()} />
-                    )}
-                </div>
-            </div>
 
             {/* Template Selection Modal */}
             {showTemplateModal && (

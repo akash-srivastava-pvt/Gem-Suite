@@ -16,6 +16,8 @@ export {
     Religion,
     Language,
     WeddingInvitation,
+    EventInvitation,
+    GreetingInvitation,
     BaseInvitation,
     GeminiImgResponse,
     WizardState

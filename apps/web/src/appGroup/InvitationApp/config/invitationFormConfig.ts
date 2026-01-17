@@ -68,54 +68,45 @@ export const invitationFormConfig: Record<
         ],
     },
 
-    mundan: {
-        title: "Mundan Ceremony",
+    event:{
+        title: "Event Details",
         defaultValues: {
-            theme: "mundan",
-            language: "hindi",
-            religion: "hindu",
+            language: "english" as Language,
+            religion: "inclusive of all religions" as Religion,
         },
         fields: [
-            { name: "childName", label: "Child Name", type: "text", required: true },
+            { name: "theme", label: "Theme", type: "select", options: [
+                { label: "Birthday", value: "birthday" },
+                { label: "Festival", value: "festival" },
+                { label: "Religious", value: "religious" },
+                { label: "Technical Event", value: "technical_event" },
+                { label: "Social Event", value: "social_event" },
+                { label: "College Event", value: "college_event" },
+            ]},
+            { name: "eventName", label: "Event Name", type: "text", required: true },
             { name: "date", label: "Date", type: "date", required: true },
-            { name: "venue", label: "Venue", type: "text" },
+            { name: "venue", label: "Venue", type: "text", required: true },
+            { name: "description", label: "Description", type: "textarea", required: true },
+            { name: "RSVP Contact", label: "RSVP Contact", type: "text", required: true },
         ],
     },
 
-    festival: {
-        title: "Festival Invitation",
+    greetings:{
+        title: "Greetings Card",
         defaultValues: {
-            theme: "festival",
-            language: "english",
+            theme: "birthday",
+            language: "english" as Language,
+            religion: "inclusive of all religions" as Religion,
         },
         fields: [
-            { name: "festivalName", label: "Festival Name", type: "text" },
-            { name: "date", label: "Date", type: "date" },
-            { name: "message", label: "Message", type: "textarea" },
+            { name: "theme", label: "Theme", type: "select", options: [
+                { label: "Birthday", value: "birthday" },
+                { label: "Festival", value: "festival" },
+                { label: "Religious", value: "religious" },
+            ]},
+            { name: "greeting", label: "Greeting", type: "text", required: true },
+            { name: "date", label: "Date", type: "date", required: true },
+            { name: "fromName ", label: "From Name", type: "text", required: true },
         ],
-    },
-
-    religious: {
-        title: "Religious Event",
-        defaultValues: {
-            theme: "religious",
-        },
-        fields: [
-            { name: "eventName", label: "Event Name", type: "text" },
-            { name: "date", label: "Date", type: "date" },
-            { name: "venue", label: "Venue", type: "text" },
-        ],
-    },
-
-    sokh_sabha: {
-        title: "Sokh Sabha",
-        defaultValues: {
-            theme: "sokh_sabha",
-        },
-        fields: [
-            { name: "speaker", label: "Speaker Name", type: "text" },
-            { name: "topic", label: "Topic", type: "text" },
-            { name: "date", label: "Date", type: "date" },
-        ],
-    },
+    }
 };

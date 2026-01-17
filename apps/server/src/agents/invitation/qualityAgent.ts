@@ -12,9 +12,25 @@ export const QualityAgent: Agent = {
   execute: async (input: any, context?: any) => {
     const { data, image } = input;
 
-    // Quality checks
+    // Quality checks based on invitation theme
+    let hasRequiredFields = false;
+
+    switch (input.theme) {
+      case 'wedding':
+        hasRequiredFields = !!(data.groomName && data.brideName && data.date && data.time && data.venue);
+        break;
+      case 'event':
+        hasRequiredFields = !!(data.eventName && data.eventType && data.date && data.venue);
+        break;
+      case 'greetings':
+        hasRequiredFields = !!(data.greeting && data.date && data.fromName);
+        break;
+      default:
+        hasRequiredFields = !!(data.date && data.venue); // Basic requirements
+    }
+
     const qualityChecks = {
-      hasRequiredFields: !!(data.groomName && data.brideName && data.date && data.time && data.venue),
+      hasRequiredFields,
       hasImage: !!image,
       languageConsistent: true,
       culturalAppropriate: true,

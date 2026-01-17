@@ -131,6 +131,50 @@ export const ResumeController = {
             // Always transform the Gemini result to UI format before reinserting PII
             const uiFormattedResult = transformResumeToUIFormat(geminiResult);
 
+            // CRITICAL FIX: Ensure original data is preserved and merged with AI enhancements
+            console.log('Original anonymised data sections:', {
+                education: anonymisedData.education?.length || 0,
+                work_history: anonymisedData.work_history?.length || 0,
+                personal_projects: anonymisedData.personal_projects?.length || 0,
+                skills: anonymisedData.skills?.length || 0
+            });
+
+            console.log('AI result sections:', {
+                education: uiFormattedResult.education?.length || 0,
+                work_experience: uiFormattedResult.work_experience?.length || 0,
+                projects: uiFormattedResult.projects?.length || 0,
+                skills: uiFormattedResult.skills?.length || 0
+            });
+
+            // Preserve original education data if AI didn't include it or it's empty
+            if ((!uiFormattedResult.education || uiFormattedResult.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
+                console.log('Preserving original education data');
+                uiFormattedResult.education = anonymisedData.education;
+            }
+
+            // Preserve work experience
+            if ((!uiFormattedResult.work_experience || uiFormattedResult.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
+                console.log('Preserving original work history data');
+                uiFormattedResult.work_experience = anonymisedData.work_history.map((exp: any) => ({
+                    title: exp.role || '',
+                    organization: exp.company || '',
+                    duration: exp.duration || '',
+                    highlights: Array.isArray(exp.description) ? exp.description : (exp.description ? exp.description.split('\n') : []),
+                }));
+            }
+
+            // Preserve projects
+            if ((!uiFormattedResult.projects || uiFormattedResult.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
+                console.log('Preserving original projects data');
+                uiFormattedResult.projects = anonymisedData.personal_projects;
+            }
+
+            // Preserve skills
+            if ((!uiFormattedResult.skills || uiFormattedResult.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
+                console.log('Preserving original skills data');
+                uiFormattedResult.skills = anonymisedData.skills;
+            }
+
             const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
             AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
             

@@ -1,5 +1,6 @@
 import { TITLES, InvitationInput, Language } from "@gem/shared";
 import { theme } from "../../../theme.js";
+import { LoadingAnimation } from "./LoadingAnimation.js";
 
 interface PreviewStepProps {
     data: InvitationInput;
@@ -7,6 +8,7 @@ interface PreviewStepProps {
     loading?: boolean;
     onGenerate: () => void;
     onBack?: () => void;
+    invitationTheme?: string;
 }
 
 export function PreviewStep({
@@ -15,10 +17,11 @@ export function PreviewStep({
     loading,
     onGenerate,
     onBack,
+    invitationTheme,
 }: PreviewStepProps) {
     return (
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {!imageUrl && (
+            {!imageUrl && !loading && (
                 <>
                     <div>
                         <h2 style={{ fontSize: '24px', margin: '0 0 8px', color: theme.colors.primary }}>
@@ -84,10 +87,14 @@ export function PreviewStep({
                             onMouseEnter={(e) => !loading && (e.currentTarget.style.opacity = '0.9')}
                             onMouseLeave={(e) => !loading && (e.currentTarget.style.opacity = '1')}
                         >
-                            {loading ? "Generating Magic..." : "Generate Invitation ✨"}
+                            {loading ? "Generating Magic..." : "Generate ✨"}
                         </button>
                     </div>
                 </>
+            )}
+
+            {loading && !imageUrl && (
+                <LoadingAnimation theme={invitationTheme || 'wedding'} />
             )}
 
             {imageUrl && (

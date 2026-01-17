@@ -5,6 +5,7 @@ import { tripService } from '../services/tripService.js';
 import ResizableLayout from '../../../components/ResizableLayout.js';
 import { aiCache } from '../../../utils/storage.js';
 import { buildTripPayload } from '../utils/buildTripPayload.js';
+import { LoadingAnimation } from '../../components/LoadingAnimation.js';
 
 const APP_NAME = "trip-planner";
 
@@ -62,27 +63,14 @@ export const TripPlannerIndex = () => {
         </div>
       )}
 
-      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        <TripPlannerApp data={tripData} />
-      </div>
-
-      {loading && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          backgroundColor: 'rgba(255,255,255,0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-        }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '8px' }}>Crafting Itinerary...</div>
-          <div style={{ color: 'var(--text-secondary)' }}>Gem AI is searching for the best destinations</div>
+      {loading ? (
+        <LoadingAnimation
+          app="trip"
+          customMessage="🗺️ AI is crafting your perfect travel adventure..."
+        />
+      ) : (
+        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+          <TripPlannerApp data={tripData} />
         </div>
       )}
     </div>

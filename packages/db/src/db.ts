@@ -136,6 +136,40 @@ class DatabaseModel {
           cover_letter_para TEXT   -- long text
       )`);
 
+        // Saved artifacts table for unified persistence
+        console.log('📋 Creating saved_artifacts table...');
+        this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          data TEXT NOT NULL,           -- JSON string or base64 encoded data
+          data_type TEXT NOT NULL,      -- text | json | image | trip | resume | invitation
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          metadata TEXT,                -- JSON metadata (optional)
+          UNIQUE(app_name, filename)    -- Prevent duplicate filenames per app
+        )`);
+        console.log('✅ saved_artifacts table created');
+
+        // Usage metrics table for analytics
+        console.log('📊 Creating usage_metrics table...');
+        this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name TEXT NOT NULL,
+          event_type TEXT NOT NULL,     -- api_hit | save | generate
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          metadata TEXT                 -- JSON additional data (optional)
+        )`);
+        console.log('✅ usage_metrics table created');
+
+        // Create indexes for performance
+        console.log('🔍 Creating indexes...');
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_app_name ON saved_artifacts(app_name)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_created_at ON saved_artifacts(created_at)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_timestamp ON usage_metrics(timestamp)`);
+        console.log('✅ Indexes created');
+
 
         this.saveToDisk();
       }
@@ -172,8 +206,9 @@ class DatabaseModel {
   }
 
   execute(sql: string, params: any[] = []) {
-    this.db.run(sql, params);
+    const result = this.db.run(sql, params);
     this.saveToDisk();
+    return result;
   }
 }
 

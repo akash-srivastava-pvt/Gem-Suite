@@ -4,6 +4,7 @@ import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
+import { saveService } from '../services/SaveService.js';
 
 export async function WeddingInvitationController(
     req: Request,
@@ -51,6 +52,13 @@ export async function WeddingInvitationController(
             });
         }
 
+        // Track API usage
+        await saveService.trackUsage('invitation', 'api_hit', {
+          theme: 'wedding',
+          religion,
+          language
+        });
+
         // ─────────────────────────────────────────
         // 3. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
@@ -95,6 +103,13 @@ export async function WeddingInvitationController(
         }
 
         LoggerModel.log(`Invitation generation completed: ${groomName} & ${brideName}`);
+
+        // Track generation event
+        await saveService.trackUsage('invitation', 'generate', {
+          theme: 'wedding',
+          religion,
+          language
+        });
 
         // ─────────────────────────────────────────
         // 4. Success Response

@@ -9,6 +9,8 @@ import ResizableLayout from '../../components/ResizableLayout.js';
 import { useShell } from '../../context/ShellContext.js';
 import { aiCache } from '../../utils/storage.js';
 import { LoadingAnimation } from '../components/LoadingAnimation.js';
+import { SaveControls } from '../../components/SaveControls.js';
+import { SavedArtifact } from '@gem/shared';
 
 interface KeyValue {
     key: string;
@@ -54,40 +56,99 @@ export const ResumeMakerApp: React.FC = () => {
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>('latex');
     const [previewMode, setPreviewMode] = useState(true);
 
-    useEffect(() => {
-        fetch('/api/v1/resume')
-            .then(res => res.json())
-            .then(savedData => {
-                if (savedData) {
-                    setData(savedData);
-                }
-            });
-    }, []);
+    const handleDataLoaded = (artifact: SavedArtifact) => {
+        try {
+            const parsedData = JSON.parse(artifact.data);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (data.name) {
-                fetch('/api/v1/resume', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                });
+            // Check if this is a complete resume package with generated content
+            if (parsedData.formData && parsedData.generated) {
+                // Complete package: restore both form and generated content
+                setData(parsedData.formData);
+                setGenerated(parsedData.generated);
+                setActiveTab('ats');
+            } else {
+                // Legacy format: only form data
+                setData(parsedData);
+                setGenerated({});
+                setActiveTab('ats');
             }
-        }, 2000);
-        return () => clearTimeout(timer);
-    }, [data]);
+        } catch (err) {
+            console.error('Failed to parse resume data:', err);
+        }
+    };
+
+    const handleCreateNew = () => {
+        setData({
+            name: '',
+            contacts: [{ key: 'Email', value: '' }],
+            links: [{ key: 'LinkedIn', value: '' }],
+            work_history: [],
+            education: [],
+            personal_projects: [],
+            skills: [],
+            cover_letter_para: '',
+        });
+        setGenerated({});
+        setActiveTab('ats');
+    };
+
+    // Check if all three components are generated
+    const isCompletePackage = generated.ats && generated.coverLetter && generated.sop;
+
+
+    // Generate all documents sequentially
+    const generateAllDocuments = async () => {
+        if (loading) return;
+
+        setLoading(true);
+        try {
+            // Generate ATS Resume first (don't switch tabs)
+            await generate('generate-ats', false);
+
+            // Then Cover Letter (don't switch tabs)
+            await generate('generate-cover-letter', false);
+
+            // Finally SOP and switch to preview (don't set loading false in generate)
+            await generate('generate-sop', false);
+
+            // All done - switch to preview and stop loading
+            setActiveTab('ats');
+            setPreviewMode(true);
+            setLoading(false);
+
+        } catch (error) {
+            console.error('Error generating documents:', error);
+            setLoading(false);
+        }
+    };
 
     // Update header actions
     useEffect(() => {
         setHeaderActions(
             <>
-                <button className="gen-btn-header" disabled={loading} onClick={() => generate('generate-ats')}>Draft Resume</button>
-                <button className="gen-btn-header" disabled={loading} onClick={() => generate('generate-cover-letter')}>Draft Cover Letter</button>
-                <button className="gen-btn-header" disabled={loading} onClick={() => generate('generate-sop')}>Draft SOP</button>
+                <SaveControls
+                    appName="resumemaker"
+                    currentData={isCompletePackage ? JSON.stringify({
+                        formData: data,
+                        generated: generated
+                    }) : ''}
+                    dataType="resume"
+                    onDataLoaded={handleDataLoaded}
+                    onCreateNew={handleCreateNew}
+                />
+                <button
+                    className="gen-btn-header"
+                    disabled={loading || isCompletePackage}
+                    onClick={generateAllDocuments}
+                >
+                    {loading ? 'Generating...' :
+                     isCompletePackage ? '✓ All Generated' :
+                     'Generate All Documents'}
+                </button>
             </>
         );
         return () => setHeaderActions(null);
-    }, [loading, data]);
+    }, [loading, data, generated, isCompletePackage]);
 
     const handleAddField = (section: keyof ResumeData) => {
         setData(prev => ({
@@ -131,7 +192,7 @@ export const ResumeMakerApp: React.FC = () => {
         });
     };
 
-    const generate = async (type: 'generate-ats' | 'generate-cover-letter' | 'generate-sop') => {
+    const generate = async (type: 'generate-ats' | 'generate-cover-letter' | 'generate-sop', switchTab: boolean = true) => {
         // Check cache first
         const cacheKey = { type, data };
         const appName = `resume-${type}`;
@@ -146,9 +207,11 @@ export const ResumeMakerApp: React.FC = () => {
                 key = 'sop';
             }
             setGenerated(prev => ({ ...prev, [key]: cached }));
-            setActiveTab(key);
-            setPreviewMode(true);
-            setLoading(false);
+            if (switchTab) {
+                setActiveTab(key);
+                setPreviewMode(true);
+            }
+            if (switchTab) setLoading(false);
             return;
         }
 
@@ -175,12 +238,14 @@ export const ResumeMakerApp: React.FC = () => {
             }
 
             setGenerated(prev => ({ ...prev, [key]: result }));
-            setActiveTab(key);
-            setPreviewMode(true);
+            if (switchTab) {
+                setActiveTab(key);
+                setPreviewMode(true);
+                setLoading(false);
+            }
         } catch (e) {
             console.error(e);
-        } finally {
-            setLoading(false);
+            if (switchTab) setLoading(false);
         }
     };
 
@@ -315,6 +380,40 @@ export const ResumeMakerApp: React.FC = () => {
 
     const PreviewSection = (
         <section className="preview-section">
+            {/* Completion Status */}
+            <div className="completion-status">
+                <div className="status-header">
+                    <h4>Resume Package Status</h4>
+                    {loading ? (
+                        <span className="status-loading">🔄 Generating documents...</span>
+                    ) : isCompletePackage ? (
+                        <span className="status-complete">✅ Complete - Ready to Save!</span>
+                    ) : (
+                        <span className="status-incomplete">⏳ Click "Generate All Documents" to get started</span>
+                    )}
+                </div>
+                <div className="status-items">
+                    <div className={`status-item ${generated.ats ? 'complete' : loading ? 'loading' : 'pending'}`}>
+                        <span className="status-icon">
+                            {generated.ats ? '✓' : loading ? '🔄' : '○'}
+                        </span>
+                        <span>ATS Resume</span>
+                    </div>
+                    <div className={`status-item ${generated.coverLetter ? 'complete' : (loading && generated.ats) ? 'loading' : 'pending'}`}>
+                        <span className="status-icon">
+                            {generated.coverLetter ? '✓' : (loading && generated.ats) ? '🔄' : '○'}
+                        </span>
+                        <span>Cover Letter</span>
+                    </div>
+                    <div className={`status-item ${generated.sop ? 'complete' : (loading && generated.coverLetter) ? 'loading' : 'pending'}`}>
+                        <span className="status-icon">
+                            {generated.sop ? '✓' : (loading && generated.coverLetter) ? '🔄' : '○'}
+                        </span>
+                        <span>SOP</span>
+                    </div>
+                </div>
+            </div>
+
             <div className="tabs">
                 <button className={activeTab === 'ats' ? 'active' : ''} onClick={() => setActiveTab('ats')}>Resume</button>
                 <button className={activeTab === 'coverLetter' ? 'active' : ''} onClick={() => setActiveTab('coverLetter')}>Cover Letter</button>

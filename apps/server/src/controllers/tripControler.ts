@@ -4,6 +4,7 @@ import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { tripPlannerWorkflow } from '../orchestration/workflows.js';
+import { saveService } from '../services/SaveService.js';
 
 export async function TripController(req: Request, res: Response) {
     try {
@@ -36,22 +37,34 @@ export async function TripController(req: Request, res: Response) {
             return res.status(401).json({ error: 'API Key not found. Please activate first.' });
         }
 
+        // Track API usage
+        await saveService.trackUsage('tripplanner', 'api_hit', {
+            places: data.places.length,
+            tripType: data.tripType
+        });
+
         // 4. Execute workflow with MCP/A2A
         LoggerModel.log(`Starting trip planning workflow: ${data.places.join(', ')}`);
-        
+
         const result = await agentOrchestrator.executeWorkflow(tripPlannerWorkflow, { data });
 
         if (!result.success) {
             console.error('Workflow errors:', result.errors);
-            return res.status(500).json({ 
+            return res.status(500).json({
                 error: 'Trip planning workflow failed',
-                details: result.errors 
+                details: result.errors
             });
         }
 
+        // Track generation event
+        await saveService.trackUsage('tripplanner', 'generate', {
+            places: data.places.length,
+            tripType: data.tripType
+        });
+
         LoggerModel.log(`Trip planning completed: ${data.places.join(', ')}`);
-        return res.status(200).json({ 
-            success: true, 
+        return res.status(200).json({
+            success: true,
             data: {
                 ...result.results.localization,
                 ...result.results.weather,

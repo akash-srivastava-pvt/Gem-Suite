@@ -84,6 +84,16 @@ export function useInvitationWizard() {
         formStorage.clear(APP_NAME);
     };
 
+    const loadFromData = (data: any) => {
+        setState({
+            step: 3,
+            theme: data.theme,
+            formData: data.formData,
+            imageUrl: data.imageUrl,
+            loading: false
+        });
+    };
+
     return {
         state,
         selectTheme,
@@ -92,5 +102,6 @@ export function useInvitationWizard() {
         back,
         generate,
         reset,
+        loadFromData,
     };
 }

@@ -8,10 +8,12 @@ dotenv.config();
 
 const { result } = concurrently(
   [
-    { 
-      command: 'npm run dev -w @gem/server', 
-      name: 'SERVER', 
-      prefixColor: 'blue' 
+    {
+      command: process.platform === 'win32'
+        ? 'set PORT=3001 && npm run dev -w @gem/server'
+        : 'PORT=3001 npm run dev -w @gem/server',
+      name: 'SERVER',
+      prefixColor: 'blue'
     },
     { 
       command: 'npm run dev -w @gem/web', 

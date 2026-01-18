@@ -1,7 +1,7 @@
 import { GeminiImgResponse } from "@gem/shared";
 
 const GEMINI_URL =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-image:generateContent";
 
 const REQUEST_TIMEOUT = 45_000;
 const MAX_RETRIES = 2;

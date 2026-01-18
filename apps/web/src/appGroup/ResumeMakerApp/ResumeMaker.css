@@ -8,6 +8,118 @@
     overflow: hidden;
 }
 
+/* Completion Status */
+.completion-status {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.status-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.status-complete {
+    color: var(--success, #10b981);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.status-incomplete {
+    color: var(--warning, #f59e0b);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.status-loading {
+    color: var(--primary, #3b82f6);
+    font-weight: 600;
+    font-size: 0.85rem;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.status-items {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .status-items {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .status-item {
+        justify-content: center;
+    }
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--background);
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+}
+
+.status-item.complete {
+    color: var(--success, #10b981);
+    border-color: var(--success, #10b981);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.status-item.pending {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.status-item.loading {
+    color: var(--primary, #3b82f6);
+    animation: pulse-item 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-item {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.status-icon {
+    font-size: 1rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
 /* Form Section */
 .form-section {
     padding: 2rem;

@@ -38,11 +38,23 @@ async function startServer() {
     app.use(cors());
     app.use(express.json());
 
+    // Request logging middleware
+    app.use((req, res, next) => {
+      console.log(`🌐 ${req.method} ${req.url}`);
+      next();
+    });
+
     // ============================================
     // API
     // ============================================
 
     app.use('/api/v1', apiRouter);
+
+    // Test route
+    app.get('/api/v1/test', (req, res) => {
+      console.log('🧪 Server test endpoint called');
+      res.json({ success: true, message: 'Server is running', timestamp: new Date().toISOString() });
+    });
 
     app.get('/health', (_req, res) => {
       res.json({

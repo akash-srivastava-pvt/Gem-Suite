@@ -154,3 +154,59 @@ export interface WizardState {
   imageUrl?: string;
   loading?: boolean;
 }
+
+export type DataType = 'text' | 'json' | 'image' | 'trip' | 'resume' | 'invitation';
+
+export interface SavedArtifact {
+  id: number;
+  appName: string;
+  filename: string;
+  data: string; // JSON string or base64 for images
+  dataType: DataType;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SaveArtifactRequest {
+  appName: string;
+  filename: string;
+  data: string;
+  dataType: DataType;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateArtifactRequest {
+  filename?: string;
+  data?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UsageMetrics {
+  appName: string;
+  apiHits: number;
+  savedArtifacts: number;
+  generatedArtifacts: number;
+}
+
+export interface HealthStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+  timestamp: string;
+  uptime: number;
+  database: {
+    status: 'connected' | 'disconnected' | 'unknown';
+    lastBackup?: string;
+  };
+  memory: {
+    used: number;
+    total: number;
+  };
+  artifacts: {
+    count: number;
+    lastActivity?: string;
+  };
+  errors: {
+    count: number;
+    lastError?: string;
+  };
+}

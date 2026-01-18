@@ -20,5 +20,11 @@ export {
     GreetingInvitation,
     BaseInvitation,
     GeminiImgResponse,
-    WizardState
+    WizardState,
+    DataType,
+    SavedArtifact,
+    SaveArtifactRequest,
+    UpdateArtifactRequest,
+    UsageMetrics,
+    HealthStatus
 } from './types.js';

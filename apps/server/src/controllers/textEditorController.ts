@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { LoggerModel } from "../models/loggerModel.js";
 import { agentOrchestrator } from "../orchestration/agentOrchestrator.js";
 import { textEditorWorkflow } from "../orchestration/workflows.js";
+import { saveService } from "../services/SaveService.js";
 
 export async function TextEditorController(req: Request, res: Response) {
   try {
@@ -20,6 +21,15 @@ export async function TextEditorController(req: Request, res: Response) {
     if (!apiKey) {
       throw new Error("Gemini API key missing");
     }
+
+    // Track API usage
+    await saveService.trackUsage('texteditor', 'api_hit', {
+      intent,
+      textLength: text.length,
+      language,
+      tone,
+      style
+    });
 
     // For simple intents, use direct agent call
     // For complex operations, use workflow
@@ -44,6 +54,12 @@ export async function TextEditorController(req: Request, res: Response) {
       const finalResult = result.results.tone || result.results.style || result.results.grammar || result.results.edit;
       LoggerModel.log(`Text editing workflow completed: ${intent}`);
 
+      // Track generation event
+      await saveService.trackUsage('texteditor', 'generate', {
+        intent,
+        workflow: true
+      });
+
       return res.status(200).json({
         success: true,
         data: finalResult,
@@ -56,6 +72,12 @@ export async function TextEditorController(req: Request, res: Response) {
         text,
         language,
         tone
+      });
+
+      // Track generation event
+      await saveService.trackUsage('texteditor', 'generate', {
+        intent,
+        workflow: false
       });
 
       return res.status(200).json({

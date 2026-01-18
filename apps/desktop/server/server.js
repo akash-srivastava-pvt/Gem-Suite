@@ -155,7 +155,7 @@ var init_jsonParser = __esm({
 });
 
 // src/server.ts
-var import_express8 = __toESM(require("express"), 1);
+var import_express9 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_path3 = __toESM(require("path"), 1);
 var import_config = require("dotenv/config");
@@ -254,6 +254,34 @@ var DatabaseModel = class {
           skills TEXT,             -- JSON array of objects
           cover_letter_para TEXT   -- long text
       )`);
+        console.log("\u{1F4CB} Creating saved_artifacts table...");
+        this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          data TEXT NOT NULL,           -- JSON string or base64 encoded data
+          data_type TEXT NOT NULL,      -- text | json | image | trip | resume | invitation
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          metadata TEXT,                -- JSON metadata (optional)
+          UNIQUE(app_name, filename)    -- Prevent duplicate filenames per app
+        )`);
+        console.log("\u2705 saved_artifacts table created");
+        console.log("\u{1F4CA} Creating usage_metrics table...");
+        this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name TEXT NOT NULL,
+          event_type TEXT NOT NULL,     -- api_hit | save | generate
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          metadata TEXT                 -- JSON additional data (optional)
+        )`);
+        console.log("\u2705 usage_metrics table created");
+        console.log("\u{1F50D} Creating indexes...");
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_app_name ON saved_artifacts(app_name)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_created_at ON saved_artifacts(created_at)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_timestamp ON usage_metrics(timestamp)`);
+        console.log("\u2705 Indexes created");
         this.saveToDisk();
       }
       console.log("\u2705 Database initialized successfully");
@@ -282,14 +310,15 @@ var DatabaseModel = class {
     return results;
   }
   execute(sql, params = []) {
-    this.db.run(sql, params);
+    const result = this.db.run(sql, params);
     this.saveToDisk();
+    return result;
   }
 };
 var db = new DatabaseModel();
 
 // src/routes/index.ts
-var import_express7 = require("express");
+var import_express8 = require("express");
 
 // src/routes/activateRoutes.ts
 var import_express = require("express");
@@ -494,7 +523,7 @@ async function callGemini(apiKey, prompt) {
 }
 
 // src/proxies/gemini3.ts
-var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent";
+var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
 var REQUEST_TIMEOUT2 = 45e3;
 var MAX_TOKENS = 7200;
 async function callGemini2(apiKey, prompt, retries = 2) {
@@ -652,7 +681,7 @@ async function callGemini3(apiKey, prompt) {
 }
 
 // src/proxies/gemini3img.ts
-var GEMINI_URL4 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+var GEMINI_URL4 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-image:generateContent";
 var REQUEST_TIMEOUT4 = 45e3;
 var MAX_RETRIES3 = 2;
 async function callGemini4(apiKey, prompt) {
@@ -2021,10 +2050,10 @@ var AgentOrchestrator = class {
    */
   resolveInput(input, results) {
     if (typeof input === "string" && input.startsWith("$")) {
-      const path4 = input.substring(1).split(".");
-      let value = results[path4[0]];
-      for (let i = 1; i < path4.length && value !== void 0; i++) {
-        value = value[path4[i]];
+      const path5 = input.substring(1).split(".");
+      let value = results[path5[0]];
+      for (let i = 1; i < path5.length && value !== void 0; i++) {
+        value = value[path5[i]];
       }
       return value;
     }
@@ -2232,6 +2261,291 @@ var invitationMakerWorkflow = {
   onError: "continue"
 };
 
+// src/services/SaveService.ts
+var SaveService = class {
+  /**
+   * Save a new artifact
+   */
+  async saveArtifact(request) {
+    try {
+      console.log("\u{1F4BE} SaveService.saveArtifact called:", { appName: request.appName, filename: request.filename, dataType: request.dataType, dataLength: request.data?.length });
+      const { appName, filename, data, dataType, metadata } = request;
+      if (!appName || !filename || !data || !dataType) {
+        throw new Error("Missing required fields: appName, filename, data, dataType");
+      }
+      if (!["text", "json", "image", "trip", "resume", "invitation"].includes(dataType)) {
+        throw new Error("Invalid dataType. Must be one of: text, json, image, trip, resume, invitation");
+      }
+      const metadataJson = metadata ? JSON.stringify(metadata) : null;
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const result = db.execute(
+        `INSERT OR REPLACE INTO saved_artifacts
+         (app_name, filename, data, data_type, created_at, updated_at, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [appName, filename, data, dataType, now, now, metadataJson]
+      );
+      await this.trackUsage(appName, "save", { filename, dataType });
+      LoggerModel.log(`Saved artifact: ${appName}/${filename}`);
+      return {
+        id: result.insertId,
+        appName,
+        filename,
+        data,
+        dataType,
+        createdAt: now,
+        updatedAt: now,
+        metadata
+      };
+    } catch (error) {
+      console.error("SaveService.saveArtifact error:", error);
+      LoggerModel.log(`Failed to save artifact: ${request.appName}/${request.filename} - ${error.message}`);
+      throw new Error(`Failed to save artifact: ${error.message}`);
+    }
+  }
+  /**
+   * Get all artifacts for an app
+   */
+  async getArtifacts(appName) {
+    try {
+      if (!appName) {
+        throw new Error("appName is required");
+      }
+      const rows = db.query(
+        `SELECT id, app_name, filename, data, data_type, created_at, updated_at, metadata
+         FROM saved_artifacts
+         WHERE app_name = ?
+         ORDER BY updated_at DESC`,
+        [appName]
+      );
+      return rows.map((row) => ({
+        id: row.id,
+        appName: row.app_name,
+        filename: row.filename,
+        data: row.data,
+        dataType: row.data_type,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        metadata: row.metadata ? JSON.parse(row.metadata) : void 0
+      }));
+    } catch (error) {
+      console.error("SaveService.getArtifacts error:", error);
+      throw new Error(`Failed to get artifacts: ${error.message}`);
+    }
+  }
+  /**
+   * Get a specific artifact
+   */
+  async getArtifact(appName, filename) {
+    try {
+      if (!appName || !filename) {
+        throw new Error("appName and filename are required");
+      }
+      const rows = db.query(
+        `SELECT id, app_name, filename, data, data_type, created_at, updated_at, metadata
+         FROM saved_artifacts
+         WHERE app_name = ? AND filename = ?`,
+        [appName, filename]
+      );
+      if (rows.length === 0) {
+        return null;
+      }
+      const row = rows[0];
+      return {
+        id: row.id,
+        appName: row.app_name,
+        filename: row.filename,
+        data: row.data,
+        dataType: row.data_type,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        metadata: row.metadata ? JSON.parse(row.metadata) : void 0
+      };
+    } catch (error) {
+      console.error("SaveService.getArtifact error:", error);
+      throw new Error(`Failed to get artifact: ${error.message}`);
+    }
+  }
+  /**
+   * Update an existing artifact
+   */
+  async updateArtifact(appName, filename, updates) {
+    try {
+      if (!appName || !filename) {
+        throw new Error("appName and filename are required");
+      }
+      const existing = await this.getArtifact(appName, filename);
+      if (!existing) {
+        return null;
+      }
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const updateFields = [];
+      const updateValues = [];
+      if (updates.filename && updates.filename !== filename) {
+        updateFields.push("filename = ?");
+        updateValues.push(updates.filename);
+      }
+      if (updates.data !== void 0) {
+        updateFields.push("data = ?");
+        updateValues.push(updates.data);
+      }
+      if (updates.metadata !== void 0) {
+        updateFields.push("metadata = ?");
+        updateValues.push(JSON.stringify(updates.metadata));
+      }
+      if (updateFields.length === 0) {
+        return existing;
+      }
+      updateFields.push("updated_at = ?");
+      updateValues.push(now);
+      updateValues.push(appName, filename);
+      db.execute(
+        `UPDATE saved_artifacts
+         SET ${updateFields.join(", ")}
+         WHERE app_name = ? AND filename = ?`,
+        updateValues
+      );
+      await this.trackUsage(appName, "save", { filename, action: "update" });
+      LoggerModel.log(`Updated artifact: ${appName}/${filename}`);
+      return updates.filename ? await this.getArtifact(appName, updates.filename) : await this.getArtifact(appName, filename);
+    } catch (error) {
+      console.error("SaveService.updateArtifact error:", error);
+      LoggerModel.log(`Failed to update artifact: ${appName}/${filename} - ${error.message}`);
+      throw new Error(`Failed to update artifact: ${error.message}`);
+    }
+  }
+  /**
+   * Delete an artifact
+   */
+  async deleteArtifact(appName, filename) {
+    try {
+      if (!appName || !filename) {
+        throw new Error("appName and filename are required");
+      }
+      const result = db.execute(
+        `DELETE FROM saved_artifacts WHERE app_name = ? AND filename = ?`,
+        [appName, filename]
+      );
+      const deleted = result.changes > 0;
+      if (deleted) {
+        LoggerModel.log(`Deleted artifact: ${appName}/${filename}`);
+      }
+      return deleted;
+    } catch (error) {
+      console.error("SaveService.deleteArtifact error:", error);
+      LoggerModel.log(`Failed to delete artifact: ${appName}/${filename} - ${error.message}`);
+      throw new Error(`Failed to delete artifact: ${error.message}`);
+    }
+  }
+  /**
+   * Track usage metrics
+   */
+  async trackUsage(appName, eventType, metadata) {
+    try {
+      console.log(`\u{1F4CA} Tracking usage: ${appName} - ${eventType}`);
+      const metadataJson = metadata ? JSON.stringify(metadata) : null;
+      db.execute(
+        `INSERT INTO usage_metrics (app_name, event_type, metadata)
+         VALUES (?, ?, ?)`,
+        [appName, eventType, metadataJson]
+      );
+      console.log(`\u2705 Usage tracked: ${appName} - ${eventType}`);
+    } catch (error) {
+      console.error("SaveService.trackUsage error:", error);
+    }
+  }
+  /**
+   * Get usage metrics for all apps
+   */
+  async getUsageMetrics() {
+    try {
+      console.log("\u{1F4CA} Server: Fetching usage metrics from database...");
+      const rows = db.query(`
+        SELECT
+          app_name,
+          SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
+          SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+        FROM usage_metrics
+        GROUP BY app_name
+        ORDER BY app_name
+      `);
+      if (rows.length === 0) {
+        return [
+          { appName: "texteditor", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+          { appName: "tripplanner", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+          { appName: "invitation", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+          { appName: "resumemaker", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 }
+        ];
+      }
+      const result = rows.map((row) => ({
+        appName: row.app_name,
+        apiHits: row.api_hits,
+        savedArtifacts: row.saved_artifacts,
+        generatedArtifacts: row.generated_artifacts
+      }));
+      console.log("\u{1F4CA} Server: Returning metrics:", result);
+      return result;
+    } catch (error) {
+      console.error("SaveService.getUsageMetrics error:", error);
+      throw new Error(`Failed to get usage metrics: ${error.message}`);
+    }
+  }
+  /**
+   * Get usage metrics for a specific app
+   */
+  async getAppUsageMetrics(appName) {
+    try {
+      const rows = db.query(`
+        SELECT
+          app_name,
+          SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
+          SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+        FROM usage_metrics
+        WHERE app_name = ?
+        GROUP BY app_name
+      `, [appName]);
+      if (rows.length === 0) {
+        return null;
+      }
+      const row = rows[0];
+      return {
+        appName: row.app_name,
+        apiHits: row.api_hits,
+        savedArtifacts: row.saved_artifacts,
+        generatedArtifacts: row.generated_artifacts
+      };
+    } catch (error) {
+      console.error("SaveService.getAppUsageMetrics error:", error);
+      throw new Error(`Failed to get app usage metrics: ${error.message}`);
+    }
+  }
+  /**
+   * Health check for the service
+   */
+  async healthCheck() {
+    try {
+      const testQuery = db.query("SELECT COUNT(*) as count FROM saved_artifacts", []);
+      const artifactCount = testQuery[0]?.count || 0;
+      return {
+        status: "healthy",
+        details: {
+          database: "connected",
+          artifacts: artifactCount
+        }
+      };
+    } catch (error) {
+      return {
+        status: "unhealthy",
+        details: {
+          error: error.message
+        }
+      };
+    }
+  }
+};
+var saveService = new SaveService();
+
 // src/controllers/tripControler.ts
 async function TripController(req, res) {
   try {
@@ -2254,6 +2568,10 @@ async function TripController(req, res) {
     if (!apiKey) {
       return res.status(401).json({ error: "API Key not found. Please activate first." });
     }
+    await saveService.trackUsage("tripplanner", "api_hit", {
+      places: data.places.length,
+      tripType: data.tripType
+    });
     LoggerModel.log(`Starting trip planning workflow: ${data.places.join(", ")}`);
     const result = await agentOrchestrator.executeWorkflow(tripPlannerWorkflow, { data });
     if (!result.success) {
@@ -2263,6 +2581,10 @@ async function TripController(req, res) {
         details: result.errors
       });
     }
+    await saveService.trackUsage("tripplanner", "generate", {
+      places: data.places.length,
+      tripType: data.tripType
+    });
     LoggerModel.log(`Trip planning completed: ${data.places.join(", ")}`);
     return res.status(200).json({
       success: true,
@@ -2304,6 +2626,13 @@ async function TextEditorController(req, res) {
     if (!apiKey) {
       throw new Error("Gemini API key missing");
     }
+    await saveService.trackUsage("texteditor", "api_hit", {
+      intent,
+      textLength: text.length,
+      language,
+      tone,
+      style
+    });
     const complexIntents = ["rewrite", "continue"];
     const useWorkflow = complexIntents.includes(intent) && (style || tone);
     if (useWorkflow) {
@@ -2320,6 +2649,10 @@ async function TextEditorController(req, res) {
       }
       const finalResult = result.results.tone || result.results.style || result.results.grammar || result.results.edit;
       LoggerModel.log(`Text editing workflow completed: ${intent}`);
+      await saveService.trackUsage("texteditor", "generate", {
+        intent,
+        workflow: true
+      });
       return res.status(200).json({
         success: true,
         data: finalResult
@@ -2331,6 +2664,10 @@ async function TextEditorController(req, res) {
         text,
         language,
         tone
+      });
+      await saveService.trackUsage("texteditor", "generate", {
+        intent,
+        workflow: false
       });
       return res.status(200).json({
         success: true,
@@ -2382,6 +2719,11 @@ async function WeddingInvitationController(req, res) {
         error: "Gemini API key not found. Please activate first."
       });
     }
+    await saveService.trackUsage("invitation", "api_hit", {
+      theme: "wedding",
+      religion,
+      language
+    });
     LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
     const invitationData = {
       theme: "wedding",
@@ -2417,6 +2759,11 @@ async function WeddingInvitationController(req, res) {
       });
     }
     LoggerModel.log(`Invitation generation completed: ${groomName} & ${brideName}`);
+    await saveService.trackUsage("invitation", "generate", {
+      theme: "wedding",
+      religion,
+      language
+    });
     return res.status(200).json({
       success: true,
       image: {
@@ -3024,6 +3371,11 @@ var ResumeController = {
   async generateATS(req, res) {
     try {
       const data = req.body;
+      await saveService.trackUsage("resumemaker", "api_hit", {
+        action: "generate_ats",
+        hasJobDescription: !!data.jobDescription,
+        industry: data.industry
+      });
       AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
@@ -3078,6 +3430,11 @@ var ResumeController = {
       }
       const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
       AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
+      await saveService.trackUsage("resumemaker", "generate", {
+        action: "generate_ats",
+        hasJobDescription: !!data.jobDescription,
+        industry: data.industry
+      });
       res.json(finalResult);
     } catch (error) {
       AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
@@ -3087,10 +3444,16 @@ var ResumeController = {
   async generateCoverLetter(req, res) {
     try {
       const data = req.body;
+      await saveService.trackUsage("resumemaker", "api_hit", {
+        action: "generate_cover_letter"
+      });
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
       const geminiResult = await GeminiTransformService.generateCoverLetter(anonymisedData);
       const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      await saveService.trackUsage("resumemaker", "generate", {
+        action: "generate_cover_letter"
+      });
       res.json(finalResult);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -3099,10 +3462,16 @@ var ResumeController = {
   async generateSOP(req, res) {
     try {
       const data = req.body;
+      await saveService.trackUsage("resumemaker", "api_hit", {
+        action: "generate_sop"
+      });
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
       const geminiResult = await GeminiTransformService.generateSOP(anonymisedData);
       const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      await saveService.trackUsage("resumemaker", "generate", {
+        action: "generate_sop"
+      });
       res.json(finalResult);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -3119,14 +3488,481 @@ router6.post("/generate-cover-letter", ResumeController.generateCoverLetter);
 router6.post("/generate-sop", ResumeController.generateSOP);
 var resumeRoutes_default = router6;
 
+// src/routes/persistenceRoutes.ts
+var import_express7 = require("express");
+
+// src/services/HealthService.ts
+var fs3 = __toESM(require("fs"), 1);
+var path3 = __toESM(require("path"), 1);
+var HealthService = class {
+  constructor() {
+    this.errorCount = 0;
+    this.isRecovering = false;
+    this.startTime = Date.now();
+  }
+  /**
+   * Comprehensive health check
+   */
+  async checkHealth() {
+    try {
+      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+      const uptime = Math.floor((Date.now() - this.startTime) / 1e3);
+      const dbStatus = await this.checkDatabaseHealth();
+      const memUsage = process.memoryUsage();
+      const artifacts = await this.getArtifactStats();
+      const errors = await this.getErrorStats();
+      let status = "healthy";
+      if (dbStatus.status === "disconnected" || errors.count > 10) {
+        status = "unhealthy";
+      } else if (dbStatus.status === "connected" && errors.count > 5) {
+        status = "degraded";
+      }
+      const healthStatus = {
+        status,
+        timestamp,
+        uptime,
+        database: dbStatus,
+        memory: {
+          used: memUsage.heapUsed,
+          total: memUsage.heapTotal
+        },
+        artifacts,
+        errors
+      };
+      if (status === "unhealthy" && !this.isRecovering) {
+        this.attemptRecovery(healthStatus);
+      }
+      return healthStatus;
+    } catch (error) {
+      console.error("Health check failed:", error);
+      this.recordError(error.message);
+      return {
+        status: "unhealthy",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        uptime: Math.floor((Date.now() - this.startTime) / 1e3),
+        database: { status: "disconnected" },
+        memory: { used: 0, total: 0 },
+        artifacts: { count: 0 },
+        errors: { count: this.errorCount, lastError: error.message }
+      };
+    }
+  }
+  /**
+   * Check database connectivity and integrity
+   */
+  async checkDatabaseHealth() {
+    try {
+      const testQuery = db.query("SELECT COUNT(*) as count FROM saved_artifacts", []);
+      const count = testQuery[0]?.count || 0;
+      const dbPath = this.getDatabasePath();
+      const stats = fs3.statSync(dbPath);
+      const lastModified = stats.mtime.toISOString();
+      return {
+        status: "connected",
+        lastBackup: lastModified
+      };
+    } catch (error) {
+      console.error("Database health check failed:", error);
+      this.recordError(`Database check failed: ${error.message}`);
+      return { status: "disconnected" };
+    }
+  }
+  /**
+   * Get artifact statistics
+   */
+  async getArtifactStats() {
+    try {
+      const countQuery = db.query("SELECT COUNT(*) as count FROM saved_artifacts", []);
+      const count = countQuery[0]?.count || 0;
+      if (count > 0) {
+        const lastActivityQuery = db.query(
+          "SELECT updated_at FROM saved_artifacts ORDER BY updated_at DESC LIMIT 1",
+          []
+        );
+        const lastActivity = lastActivityQuery[0]?.updated_at;
+        return { count, lastActivity };
+      }
+      return { count };
+    } catch (error) {
+      console.error("Artifact stats check failed:", error);
+      return { count: 0 };
+    }
+  }
+  /**
+   * Get error statistics from logs
+   */
+  async getErrorStats() {
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
+      const errorQuery = db.query(
+        `SELECT COUNT(*) as count FROM logger
+         WHERE timestamp > ? AND event LIKE '%error%' OR event LIKE '%failed%'`,
+        [oneDayAgo]
+      );
+      return {
+        count: errorQuery[0]?.count || 0,
+        lastError: this.lastError
+      };
+    } catch (error) {
+      console.error("Error stats check failed:", error);
+      return { count: this.errorCount, lastError: this.lastError };
+    }
+  }
+  /**
+   * Attempt to recover from unhealthy state
+   */
+  async attemptRecovery(healthStatus) {
+    if (this.isRecovering) {
+      return;
+    }
+    this.isRecovering = true;
+    LoggerModel.log(`Auto-healing initiated. Status: ${healthStatus.status}`);
+    try {
+      if (healthStatus.database.status === "disconnected") {
+        await this.recoverDatabase();
+      }
+      if (healthStatus.errors.count > 10) {
+        await this.clearErrorLogs();
+      }
+      if (global.gc) {
+        global.gc();
+      }
+      LoggerModel.log("Auto-healing completed successfully");
+    } catch (error) {
+      LoggerModel.log(`Auto-healing failed: ${error.message}`);
+      console.error("Auto-healing failed:", error);
+    } finally {
+      this.isRecovering = false;
+    }
+  }
+  /**
+   * Attempt database recovery
+   */
+  async recoverDatabase() {
+    try {
+      LoggerModel.log("Attempting database recovery");
+      const health = await saveService.healthCheck();
+      if (health.status === "healthy") {
+        LoggerModel.log("Database recovery successful");
+      } else {
+        throw new Error("Database recovery failed");
+      }
+    } catch (error) {
+      LoggerModel.log(`Database recovery failed: ${error.message}`);
+      throw error;
+    }
+  }
+  /**
+   * Clear old error logs to reduce noise
+   */
+  async clearErrorLogs() {
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3).toISOString();
+      db.execute(
+        'DELETE FROM logger WHERE timestamp < ? AND (event LIKE "%error%" OR event LIKE "%failed%")',
+        [sevenDaysAgo]
+      );
+      LoggerModel.log("Old error logs cleared");
+    } catch (error) {
+      console.error("Failed to clear error logs:", error);
+    }
+  }
+  /**
+   * Record an error for monitoring
+   */
+  recordError(message) {
+    this.errorCount++;
+    this.lastError = message;
+    if (this.errorCount > 100) {
+      this.errorCount = 1;
+    }
+  }
+  /**
+   * Get database path
+   */
+  getDatabasePath() {
+    const isProd = process.env.NODE_ENV === "production";
+    if (isProd) {
+      const appData = process.env.APPDATA || (process.platform === "darwin" ? path3.join(process.env.HOME || "", "Library/Application Support") : path3.join(process.env.HOME || "", ".local/share"));
+      const dbDir = path3.join(appData, "GemSuite");
+      return path3.join(dbDir, "gem-suite.sqlite");
+    }
+    return path3.join(process.cwd(), "gem-suite.sqlite");
+  }
+  /**
+   * Create backup of database
+   */
+  async createBackup() {
+    try {
+      const dbPath = this.getDatabasePath();
+      const backupPath = `${dbPath}.backup.${Date.now()}`;
+      fs3.copyFileSync(dbPath, backupPath);
+      LoggerModel.log(`Database backup created: ${backupPath}`);
+      await this.cleanupOldBackups();
+      return backupPath;
+    } catch (error) {
+      LoggerModel.log(`Database backup failed: ${error.message}`);
+      throw error;
+    }
+  }
+  /**
+   * Clean up old backup files
+   */
+  async cleanupOldBackups() {
+    try {
+      const dbPath = this.getDatabasePath();
+      const dbDir = path3.dirname(dbPath);
+      const files = fs3.readdirSync(dbDir);
+      const backups = files.filter((file) => file.startsWith("gem-suite.sqlite.backup.")).map((file) => ({
+        name: file,
+        path: path3.join(dbDir, file),
+        timestamp: parseInt(file.split(".").pop() || "0")
+      })).sort((a, b) => b.timestamp - a.timestamp);
+      if (backups.length > 5) {
+        for (let i = 5; i < backups.length; i++) {
+          fs3.unlinkSync(backups[i].path);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to cleanup old backups:", error);
+    }
+  }
+};
+var healthService = new HealthService();
+
+// src/routes/persistenceRoutes.ts
+console.log("\u{1F527} Persistence routes module loaded");
+var router7 = (0, import_express7.Router)();
+router7.get("/test", (req, res) => {
+  console.log("\u{1F9EA} Persistence test endpoint called");
+  res.json({
+    success: true,
+    message: "Persistence API is working",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    dbPath: "checking..."
+  });
+});
+router7.post("/save", async (req, res) => {
+  try {
+    console.log("\u{1F504} Save request received:", {
+      appName: req.body?.appName,
+      filename: req.body?.filename,
+      dataType: req.body?.dataType,
+      dataLength: req.body?.data?.length
+    });
+    const request = req.body;
+    if (!request.appName || !request.filename || !request.data || !request.dataType) {
+      return res.status(400).json({
+        error: "Missing required fields: appName, filename, data, dataType"
+      });
+    }
+    const artifact = await saveService.saveArtifact(request);
+    return res.status(201).json({
+      success: true,
+      data: artifact
+    });
+  } catch (error) {
+    console.error("Save artifact error:", error);
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({
+      error: "Failed to save artifact",
+      details: error.message
+    });
+  }
+});
+router7.get("/metrics/all", async (req, res) => {
+  console.log("\u{1F4CA} Metrics endpoint called");
+  try {
+    const metrics = await saveService.getUsageMetrics();
+    console.log("\u{1F4CA} Returning metrics:", metrics);
+    return res.status(200).json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    console.error("Get usage metrics error:", error);
+    const emptyMetrics = [
+      { appName: "texteditor", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+      { appName: "tripplanner", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+      { appName: "invitation", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
+      { appName: "resumemaker", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 }
+    ];
+    return res.status(200).json({
+      success: true,
+      data: emptyMetrics
+    });
+  }
+});
+router7.get("/metrics/:appName", async (req, res) => {
+  try {
+    const { appName } = req.params;
+    if (!appName) {
+      return res.status(400).json({ error: "appName parameter is required" });
+    }
+    const metrics = await saveService.getAppUsageMetrics(appName);
+    return res.status(200).json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    console.error("Get app usage metrics error:", error);
+    return res.status(500).json({
+      error: "Failed to get app usage metrics",
+      details: error.message
+    });
+  }
+});
+router7.get("/health", async (req, res) => {
+  try {
+    console.log("\u{1F3E5} Health check requested");
+    const healthStatus = await healthService.checkHealth();
+    console.log("\u{1F3E5} Health status:", healthStatus.status);
+    const statusCode = healthStatus.status === "healthy" ? 200 : healthStatus.status === "degraded" ? 206 : 503;
+    return res.status(statusCode).json({
+      success: healthStatus.status === "healthy",
+      data: healthStatus
+    });
+  } catch (error) {
+    console.error("Health check error:", error);
+    const fallbackHealth = {
+      status: "unknown",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      uptime: 0,
+      database: { status: "unknown" },
+      memory: { used: 0, total: 0 },
+      artifacts: { count: 0 },
+      errors: { count: 1, lastError: error.message }
+    };
+    return res.status(200).json({
+      success: true,
+      data: fallbackHealth
+    });
+  }
+});
+router7.post("/backup", async (req, res) => {
+  try {
+    const backupPath = await healthService.createBackup();
+    return res.status(200).json({
+      success: true,
+      message: "Database backup created successfully",
+      backupPath
+    });
+  } catch (error) {
+    console.error("Backup creation error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create backup",
+      details: error.message
+    });
+  }
+});
+router7.get("/:appName", async (req, res) => {
+  try {
+    console.log(`\u{1F4C2} Getting artifacts for app: ${req.params.appName}`);
+    const { appName } = req.params;
+    if (!appName) {
+      return res.status(400).json({ error: "appName parameter is required" });
+    }
+    const artifacts = await saveService.getArtifacts(appName);
+    console.log(`\u{1F4C2} Found ${artifacts.length} artifacts for ${appName}`);
+    return res.status(200).json({
+      success: true,
+      data: artifacts
+    });
+  } catch (error) {
+    console.error("Get artifacts error:", error);
+    return res.status(200).json({
+      success: true,
+      data: []
+    });
+  }
+});
+router7.get("/:appName/:filename", async (req, res) => {
+  try {
+    const { appName, filename } = req.params;
+    if (!appName || !filename) {
+      return res.status(400).json({ error: "appName and filename parameters are required" });
+    }
+    const artifact = await saveService.getArtifact(appName, decodeURIComponent(filename));
+    if (!artifact) {
+      return res.status(404).json({ error: "Artifact not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      data: artifact
+    });
+  } catch (error) {
+    console.error("Get artifact error:", error);
+    return res.status(500).json({
+      error: "Failed to get artifact",
+      details: error.message
+    });
+  }
+});
+router7.put("/:appName/:filename", async (req, res) => {
+  try {
+    const { appName, filename } = req.params;
+    const updates = req.body;
+    if (!appName || !filename) {
+      return res.status(400).json({ error: "appName and filename parameters are required" });
+    }
+    const artifact = await saveService.updateArtifact(appName, decodeURIComponent(filename), updates);
+    if (!artifact) {
+      return res.status(404).json({ error: "Artifact not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      data: artifact
+    });
+  } catch (error) {
+    console.error("Update artifact error:", error);
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({
+      error: "Failed to update artifact",
+      details: error.message
+    });
+  }
+});
+router7.delete("/:appName/:filename", async (req, res) => {
+  try {
+    const { appName, filename } = req.params;
+    if (!appName || !filename) {
+      return res.status(400).json({ error: "appName and filename parameters are required" });
+    }
+    const deleted = await saveService.deleteArtifact(appName, decodeURIComponent(filename));
+    if (!deleted) {
+      return res.status(404).json({ error: "Artifact not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Artifact deleted successfully"
+    });
+  } catch (error) {
+    console.error("Delete artifact error:", error);
+    return res.status(500).json({
+      error: "Failed to delete artifact",
+      details: error.message
+    });
+  }
+});
+var persistenceRoutes_default = router7;
+
 // src/routes/index.ts
-var apiRouter = (0, import_express7.Router)();
+var apiRouter = (0, import_express8.Router)();
+console.log("\u{1F527} All route modules imported");
+console.log("\u{1F527} Mounting routes...");
 apiRouter.use("/activate", activateRoutes_default);
 apiRouter.use("/trip", tripRoutes_default);
 apiRouter.use("/text-editor", textEditorRoutes_default);
 apiRouter.use("/invitation", invitationRoutes_default);
 apiRouter.use("/user", user_routes_default);
 apiRouter.use("/resume", resumeRoutes_default);
+apiRouter.use("/persistence", persistenceRoutes_default);
+console.log("\u2705 All routes mounted");
 
 // src/agents/trip.plan.agent.ts
 function buildTripPlannerPrompt({
@@ -4182,10 +5018,18 @@ async function startServer() {
     console.log("\u23F3 Registering agents...");
     registerAllAgents();
     console.log("\u2705 Agents registered");
-    const app = (0, import_express8.default)();
+    const app = (0, import_express9.default)();
     app.use((0, import_cors.default)());
-    app.use(import_express8.default.json());
+    app.use(import_express9.default.json());
+    app.use((req, res, next) => {
+      console.log(`\u{1F310} ${req.method} ${req.url}`);
+      next();
+    });
     app.use("/api/v1", apiRouter);
+    app.get("/api/v1/test", (req, res) => {
+      console.log("\u{1F9EA} Server test endpoint called");
+      res.json({ success: true, message: "Server is running", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    });
     app.get("/health", (_req, res) => {
       res.json({
         status: "ok",
@@ -4194,7 +5038,7 @@ async function startServer() {
     });
     const publicPath = process.env.WEB_DIST_PATH || import_path3.default.join(SERVER_DIR, "../web");
     console.log(`\u{1F4C2} Serving frontend from: ${publicPath}`);
-    app.use(import_express8.default.static(publicPath));
+    app.use(import_express9.default.static(publicPath));
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API route not found" });

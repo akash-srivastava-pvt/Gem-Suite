@@ -5,6 +5,7 @@ import { AuditLogService } from "../services/AuditLogService.js";
 import { agentOrchestrator } from "../orchestration/agentOrchestrator.js";
 import { resumeMakerWorkflow } from "../orchestration/workflows.js";
 import { GeminiTransformService } from "../services/GeminiTransformService.js";
+import { saveService } from "../services/SaveService.js";
 
 /**
  * Transform resume data from agent format to UI-expected format
@@ -96,6 +97,14 @@ export const ResumeController = {
     async generateATS(req: Request, res: Response) {
         try {
             const data = req.body;
+
+            // Track API usage
+            await saveService.trackUsage('resumemaker', 'api_hit', {
+              action: 'generate_ats',
+              hasJobDescription: !!data.jobDescription,
+              industry: data.industry
+            });
+
             AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
@@ -177,7 +186,14 @@ export const ResumeController = {
 
             const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
             AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
-            
+
+            // Track generation event
+            await saveService.trackUsage('resumemaker', 'generate', {
+              action: 'generate_ats',
+              hasJobDescription: !!data.jobDescription,
+              industry: data.industry
+            });
+
             res.json(finalResult);
         } catch (error: any) {
             AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
@@ -188,12 +204,24 @@ export const ResumeController = {
     async generateCoverLetter(req: Request, res: Response) {
         try {
             const data = req.body;
+
+            // Track API usage
+            await saveService.trackUsage('resumemaker', 'api_hit', {
+              action: 'generate_cover_letter'
+            });
+
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
             AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
             const geminiResult = await GeminiTransformService.generateCoverLetter(anonymisedData);
 
             const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+
+            // Track generation event
+            await saveService.trackUsage('resumemaker', 'generate', {
+              action: 'generate_cover_letter'
+            });
+
             res.json(finalResult);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -203,12 +231,24 @@ export const ResumeController = {
     async generateSOP(req: Request, res: Response) {
         try {
             const data = req.body;
+
+            // Track API usage
+            await saveService.trackUsage('resumemaker', 'api_hit', {
+              action: 'generate_sop'
+            });
+
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
             AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
             const geminiResult = await GeminiTransformService.generateSOP(anonymisedData);
 
             const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+
+            // Track generation event
+            await saveService.trackUsage('resumemaker', 'generate', {
+              action: 'generate_sop'
+            });
+
             res.json(finalResult);
         } catch (error: any) {
             res.status(500).json({ error: error.message });

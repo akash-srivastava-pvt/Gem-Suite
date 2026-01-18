@@ -6,6 +6,8 @@ import { GhostOverlay } from './GhostOverlay.js';
 import { SelectionMenu } from './SelectionMenu.js';
 import { CommandHint } from './CommandHint.js';
 import { useShell } from '../../../context/ShellContext.js';
+import { SaveControls } from '../../../components/SaveControls.js';
+import { SavedArtifact } from '@gem/shared';
 
 export const TextEditorMain: React.FC = () => {
   const { setHeaderActions } = useShell();
@@ -16,6 +18,20 @@ export const TextEditorMain: React.FC = () => {
   } = useTextEditor();
 
   const [generationPreview, setGenerationPreview] = useState('');
+
+  const handleDataLoaded = (artifact: SavedArtifact) => {
+    setContent(artifact.data);
+    setGenerationPreview('');
+    setMode('idle');
+    clearSuggestion();
+  };
+
+  const handleCreateNew = () => {
+    setContent('');
+    setGenerationPreview('');
+    setMode('idle');
+    clearSuggestion();
+  };
 
   // Auto-resize textarea
   React.useEffect(() => {
@@ -53,6 +69,13 @@ export const TextEditorMain: React.FC = () => {
   React.useEffect(() => {
     setHeaderActions(
       <>
+        <SaveControls
+          appName="texteditor"
+          currentData={content}
+          dataType="text"
+          onDataLoaded={handleDataLoaded}
+          onCreateNew={handleCreateNew}
+        />
         <div style={headerStyles.stats}>
           <span style={headerStyles.badge}>{wordCount} words</span>
           <span style={headerStyles.badge}>{readingTime} min read</span>
@@ -73,7 +96,7 @@ export const TextEditorMain: React.FC = () => {
       </>
     );
     return () => setHeaderActions(null);
-  }, [wordCount, readingTime, isProcessing, generationPreview]);
+  }, [wordCount, readingTime, isProcessing, generationPreview, content]);
 
   const triggerGeneration = async () => {
     const result = await executeCommand(content);

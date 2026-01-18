@@ -1,4 +1,5 @@
 import { InvitationInput, GeminiImgResponse } from "@gem/shared";
+import { persistenceService } from "../../../services/persistenceService.js";
 
 const API_BASE = "/api/v1/invitation";
 export const invitationService = {
@@ -6,6 +7,9 @@ export const invitationService = {
         data: InvitationInput,
         key: string
     ): Promise<GeminiImgResponse> {
+        // Track local usage
+        persistenceService.trackLocalUsage('invitation', 'api_hit');
+
         const response = await fetch(`${API_BASE}/${key}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -29,6 +33,9 @@ export const invitationService = {
         if (!res.image?.base64 || !res.image?.mimeType) {
             throw new Error("Invalid image response from server");
         }
+
+        // Track generation
+        persistenceService.trackLocalUsage('invitation', 'generate');
 
         return res;
     },

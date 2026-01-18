@@ -1,3 +1,4 @@
+import React from 'react';
 import { useInvitationWizard } from "./hooks/useInvitationWizard.js";
 import { ThemeSelector } from "./components/ThemeSelector.js";
 import { DynamicForm } from "./components/DynamicForm.js";
@@ -6,12 +7,49 @@ import { invitationFormConfig } from "./config/invitationFormConfig.js";
 
 import { theme as appTheme } from "../../theme.js";
 import { Stepper } from "./components/Stepper.js";
+import { SaveControls } from "../../components/SaveControls.js";
+import { SavedArtifact } from '@gem/shared';
+import { useShell } from '../../context/ShellContext.js';
 
 export const InvitationApp = () => {
+    const { setHeaderActions } = useShell();
     const wizard = useInvitationWizard();
     const { step, theme, formData } = wizard.state;
 
     const steps = ["Select Theme", "Enter Details", "Review & Download"];
+
+    const handleDataLoaded = (artifact: SavedArtifact) => {
+        try {
+            const parsedData = JSON.parse(artifact.data);
+            wizard.loadFromData(parsedData);
+        } catch (err) {
+            console.error('Failed to parse invitation data:', err);
+        }
+    };
+
+    const handleCreateNew = () => {
+        wizard.reset();
+    };
+
+    // Update header actions
+    React.useEffect(() => {
+        setHeaderActions(
+            <>
+                <SaveControls
+                    appName="invitation"
+                    currentData={step === 3 && formData && wizard.state.imageUrl ? JSON.stringify({
+                        theme: wizard.state.theme,
+                        formData: wizard.state.formData,
+                        imageUrl: wizard.state.imageUrl
+                    }) : ''}
+                    dataType="invitation"
+                    onDataLoaded={handleDataLoaded}
+                    onCreateNew={handleCreateNew}
+                />
+            </>
+        );
+        return () => setHeaderActions(null);
+    }, [step, formData, wizard.state.theme, wizard.state.formData, wizard.state.imageUrl]);
 
     return (
         <div style={{

@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
+import { saveService } from '../services/SaveService.js';
 
 export async function EventInvitationController(
     req: Request,
@@ -12,9 +12,6 @@ export async function EventInvitationController(
     try {
         const { data } = req.body;
 
-        // ─────────────────────────────────────────
-        // 1. Basic Validations
-        // ─────────────────────────────────────────
         if (!data) {
             return res.status(400).json({ error: 'Request data is required' });
         }
@@ -46,36 +43,27 @@ export async function EventInvitationController(
                 .json({ error: 'Date and venue are required' });
         }
 
-        // ─────────────────────────────────────────
-        // 2. API Key Retrieval
-        // ─────────────────────────────────────────
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            return res.status(401).json({
-                error: 'Gemini API key not found. Please activate first.',
-            });
-        }
-
-        // ─────────────────────────────────────────
-        // 3. Execute Workflow with MCP/A2A
-        // ─────────────────────────────────────────
         LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+
+        // Track the unique flow API hit
+        await saveService.trackUsage('invitation', 'api_hit', { theme: 'event', eventTheme: theme });
 
         const invitationData = {
             theme: 'event',
             eventName,
-            eventType: theme,
+            eventTheme: theme,
             date,
             venue,
             language,
             religion,
             description: data.description,
-            rsvpContact: data['RSVP Contact'],
+            rsvpContact: data['RSVP Contact']
         };
 
         const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
             data: invitationData,
-            theme: 'event'
+            theme: 'event',
+            trackUsage: false // Disable internal tracking
         });
 
         if (!result.success) {
@@ -86,10 +74,12 @@ export async function EventInvitationController(
             });
         }
 
+        // Get the final result from workflow steps with null safety
+        const workflowResults = result.results || {};
         const finalResult = {
-            ...result.results.design,
-            ...result.results.localization,
-            ...result.results.quality
+            ...(workflowResults.design || {}),
+            ...(workflowResults.localization || {}),
+            ...(workflowResults.quality || {})
         };
 
         if (!finalResult?.image?.base64) {
@@ -98,11 +88,15 @@ export async function EventInvitationController(
             });
         }
 
+        // Track generation event
+        await saveService.trackUsage('invitation', 'generate', {
+            theme: 'event',
+            eventTheme: theme,
+            language
+        });
+
         LoggerModel.log(`Event invitation generation completed: ${eventName}`);
 
-        // ─────────────────────────────────────────
-        // 4. Success Response
-        // ─────────────────────────────────────────
         return res.status(200).json({
             success: true,
             image: {
@@ -115,6 +109,11 @@ export async function EventInvitationController(
 
     } catch (error: any) {
         console.error('Event invitation generation failed:', error);
+        await saveService.trackUsage('invitation', 'api_error', {
+            error: error.message,
+            theme: 'event',
+            eventName: req.body?.data?.eventName
+        });
 
         if (error instanceof ValidationError) {
             return res.status(400).json({ error: error.message });

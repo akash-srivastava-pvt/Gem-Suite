@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
@@ -43,26 +42,12 @@ export async function WeddingInvitationController(
         }
 
         // ─────────────────────────────────────────
-        // 2. API Key Retrieval
-        // ─────────────────────────────────────────
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            return res.status(401).json({
-                error: 'Gemini API key not found. Please activate first.',
-            });
-        }
-
-        // Track API usage
-        await saveService.trackUsage('invitation', 'api_hit', {
-          theme: 'wedding',
-          religion,
-          language
-        });
-
-        // ─────────────────────────────────────────
         // 3. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
         LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
+
+        // Track the unique flow API hit
+        await saveService.trackUsage('invitation', 'api_hit', { theme: 'wedding', religion });
 
         const invitationData = {
             theme: 'wedding',
@@ -79,7 +64,8 @@ export async function WeddingInvitationController(
 
         const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
             data: invitationData,
-            theme: 'wedding'
+            theme: 'wedding',
+            trackUsage: false // Disable internal tracking
         });
 
         if (!result.success) {
@@ -90,12 +76,14 @@ export async function WeddingInvitationController(
             });
         }
 
+        // Get the final result from workflow steps with null safety
+        const workflowResults = result.results || {};
         const finalResult = {
-            ...result.results.design,
-            ...result.results.localization,
-            ...result.results.quality
+            ...(workflowResults.design || {}),
+            ...(workflowResults.localization || {}),
+            ...(workflowResults.quality || {})
         };
-        
+
         if (!finalResult?.image?.base64) {
             return res.status(502).json({
                 error: 'Gemini did not return an image',
@@ -106,9 +94,9 @@ export async function WeddingInvitationController(
 
         // Track generation event
         await saveService.trackUsage('invitation', 'generate', {
-          theme: 'wedding',
-          religion,
-          language
+            theme: 'wedding',
+            religion,
+            language
         });
 
         // ─────────────────────────────────────────
@@ -126,6 +114,12 @@ export async function WeddingInvitationController(
 
     } catch (error: any) {
         console.error('Wedding invitation generation failed:', error);
+        await saveService.trackUsage('invitation', 'api_error', {
+            error: error.message,
+            theme: 'wedding',
+            brideName: req.body?.data?.brideName,
+            groomName: req.body?.data?.groomName
+        });
 
         if (error instanceof ValidationError) {
             return res.status(400).json({ error: error.message });

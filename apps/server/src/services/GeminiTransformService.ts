@@ -1,167 +1,225 @@
-import { getApiKey, callGeminiWithUserPreference } from "../utility/helper.js";
+import { AiProxyService } from "../ai/ai-proxy.service.js";
 import { parseAIJSON, extractTextContent } from "../utility/jsonParser.js";
 
+/**
+ * Normalize skills into categorized format
+ */
+function normalizeSkills(skills: any): Record<string, string[]> {
+  if (!skills) return {};
+
+  // Already categorized
+  if (typeof skills === "object" && !Array.isArray(skills)) {
+    return Object.fromEntries(
+      Object.entries(skills).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? v.filter(Boolean) : [],
+      ])
+    );
+  }
+
+  // Flat array → Tools
+  if (Array.isArray(skills)) {
+    return {
+      Tools: skills.filter(Boolean),
+    };
+  }
+
+  return {};
+}
+
 export const GeminiTransformService = {
-  async generateATSResume(anonymisedData: any): Promise<any> {
-    const apiKey = await getApiKey();
-    
-    // Extract and preserve all data from input
+  async generateATSResume(anonymisedData: any, trackUsage: boolean = true): Promise<any> {
     const workHistory = anonymisedData.work_history || [];
     const education = anonymisedData.education || [];
     const personalProjects = anonymisedData.personal_projects || [];
-    const skills = anonymisedData.skills || [];
     const contacts = anonymisedData.contacts || [];
     const links = anonymisedData.links || [];
-    
+    const inputSkills = normalizeSkills(anonymisedData.skills);
+
     const prompt = `
-      You are a professional resume writer and ATS optimization expert.
-      Using the provided anonymised candidate data, generate a COMPLETE and ATS-friendly resume.
-      
-      CRITICAL: You MUST preserve ALL data from the input. Do NOT omit any work history, education, projects, or skills.
+You are a professional resume writer and ATS optimization expert.
 
-      Input Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+CRITICAL INSTRUCTIONS (MUST FOLLOW):
+- DO NOT omit, remove, or merge any input data.
+- DO NOT invent new experience, education, or projects.
+- Preserve ALL entries from input arrays.
 
-      Rules:
-      1. PRESERVE ALL INPUT DATA:
-         - Include EVERY work history entry from input (work_history array)
-         - Include EVERY education entry from input (education array)
-         - Include EVERY personal project from input (personal_projects array)
-         - Include EVERY skill from input (skills array)
-         - Include ALL contacts and links from input
-      
-      2. ENHANCEMENT (do not remove, only improve):
-         - Rewrite descriptions professionally with action verbs
-         - Convert work_history descriptions to bullet points in highlights array
-         - Optimize for ATS keyword scanning
-         - Maintain professional tone
-         - Do NOT invent or hallucinate any new experience/education/projects
-      
-      3. STRUCTURE:
-         - Convert work_history to work_experience format for processing
-         - Convert personal_projects to projects format for processing
-         - Generate a comprehensive, granular, and categorized list of *individual skills* under 'Frontend', 'Backend', and 'Tools'. Each skill entry MUST be a specific technology, methodology, or tool (e.g., 'React', 'TypeScript', 'Node.js', 'SQL', 'Git'), NOT a generic category (e.g., 'Frontend Development', 'Backend Development', 'Development Tools'). If input skills are generic, break them down into specific keywords. Do NOT use generic categories like 'Technical Skills'.
+INPUT DATA:
+${JSON.stringify(anonymisedData, null, 2)}
 
-      Output format:
-      IMPORTANT: Return ONLY valid JSON. Do NOT include markdown code blocks, backticks, or any formatting.
-      Return STRICT JSON matching the input structure but with enhanced content:
-      {
-        "name": "CANDIDATE_NAME",
-        "summary": "Professional summary based on ALL work history and skills provided",
-        "contacts": [{"key": "string", "value": "string"}],
-        "links": [{"key": "string", "value": "string"}],
-        "skills": {
-          "Frontend": ["skill1", "skill2"],
-          "Backend": ["skill1", "skill2"],
-          "Tools": ["tool1", "tool2"]
-        },
-        "work_experience": [
-          {
-            "title": "role from input",
-            "organization": "company from input",
-            "duration": "duration from input",
-            "highlights": ["bullet point 1 from description", "bullet point 2 from description", ...]
-          }
-        ],
-        "education": [
-          {
-            "degree": "degree from input",
-            "institution": "institution from input",
-            "details": "details from input (may include year)"
-          }
-        ],
-        "projects": [
-          {
-            "name": "name/title from input",
-            "description": "enhanced description from input"
-          }
-        ]
-      }
-      
-      REMEMBER: Include ALL entries from input arrays. If input has 2 work_history entries, output must have 2 work_experience entries.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+TASKS:
+1. Rewrite content professionally using action verbs.
+2. Convert work_history → work_experience with bullet highlights.
+3. Convert personal_projects → projects.
+4. Optimize language for ATS scanning.
+5. Skills MUST be returned as array of strings:
+
+"skills": [string]
+
+RULES FOR SKILLS:
+- Each skill must be a specific technology, tool, or methodology.
+- NO generic terms like "Frontend Development".
+- If skills are generic, break them into atomic keywords, but array of strings only
+
+OUTPUT FORMAT:
+Return ONLY valid JSON (no markdown, no backticks):
+
+{
+  "name": "string",
+  "summary": "string",
+  "contacts": [{ "key": "string", "value": "string" }],
+  "links": [{ "key": "string", "value": "string" }],
+  "skills": [string],
+  "work_experience": [
+    {
+      "title": "string",
+      "organization": "string",
+      "duration": "string",
+      "highlights": ["string"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "string",
+      "institution": "string",
+      "details": "string"
+    }
+  ],
+  "projects": [
+    {
+      "name": "string",
+      "description": "string"
+    }
+  ]
+}
+
+IMPORTANT:
+If input has N entries, output MUST have N entries.
+`;
+
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
+
     const result = parseAIJSON(response.data);
-    
-    // Ensure all input data is preserved - merge with AI output
+
     return {
       name: result.name || anonymisedData.name || "CANDIDATE_NAME",
       summary: result.summary || "",
-      contacts: result.contacts && result.contacts.length > 0 ? result.contacts : contacts,
-      links: result.links && result.links.length > 0 ? result.links : links,
-      skills: result.skills && Object.keys(result.skills).length > 0 ? result.skills : skills,
-      work_experience: result.work_experience && result.work_experience.length > 0 
-        ? result.work_experience 
-        : workHistory.map((w: any) => ({
-            title: w.role || w.title || '',
-            organization: w.company || w.organization || '',
-            duration: w.duration || '',
-            highlights: w.description ? w.description.split('\n').filter((l: string) => l.trim()) : []
+      contacts:
+        Array.isArray(result.contacts) && result.contacts.length
+          ? result.contacts
+          : contacts,
+      links:
+        Array.isArray(result.links) && result.links.length
+          ? result.links
+          : links,
+
+      skills:
+        Array.isArray(result.skills) && result.skills.length
+          ? result.skills
+          : inputSkills,
+
+      work_experience:
+        Array.isArray(result.work_experience) && result.work_experience.length
+          ? result.work_experience
+          : workHistory.map((w: any) => ({
+            title: w.role || w.title || "",
+            organization: w.company || w.organization || "",
+            duration: w.duration || "",
+            highlights: Array.isArray(w.description)
+              ? w.description
+              : typeof w.description === "string"
+                ? w.description.split("\n").filter(Boolean)
+                : [],
           })),
-      education: result.education && result.education.length > 0 
-        ? result.education 
-        : education.map((e: any) => ({
-            degree: e.degree || '',
-            institution: e.institution || '',
-            details: e.details || (e.year ? `${e.year} - ${e.details}` : '')
+
+      education:
+        Array.isArray(result.education) && result.education.length
+          ? result.education
+          : education.map((e: any) => ({
+            degree: e.degree || "",
+            institution: e.institution || "",
+            details:
+              e.details ||
+              (e.year ? `${e.year}` : ""),
           })),
-      projects: result.projects && result.projects.length > 0 
-        ? result.projects 
-        : personalProjects.map((p: any) => ({
-            name: p.title || p.name || '',
-            description: p.description || ''
-          }))
+
+      projects:
+        Array.isArray(result.projects) && result.projects.length
+          ? result.projects
+          : personalProjects.map((p: any) => ({
+            name: p.title || p.name || "",
+            description: p.description || "",
+          })),
     };
   },
 
-  async generateCoverLetter(anonymisedData: any): Promise<any> {
-    const apiKey = await getApiKey();
+  async generateCoverLetter(anonymisedData: any, trackUsage: boolean = true): Promise<any> {
     const prompt = `
-      You are a professional career coach.
-      Using the anonymised resume data provided, generate a professional cover letter.
+You are a professional career coach.
 
-      Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+Generate a professional cover letter using the anonymised resume data.
 
-      Rules:
-      - Suitable for Internships, Entry-level roles, or Graduate positions.
-      - Reflect ALL resume sections.
-      - Confident but humble tone.
-      - Remove or rewrite abusive, sensitive, or unsafe language into neutral professional phrasing.
-      - Length: 3–4 concise paragraphs.
+RULES:
+- Suitable for internships and entry-level roles.
+- Reflect ALL resume sections.
+- Confident but humble tone.
+- Length: 3–4 concise paragraphs.
+- Neutralize unsafe or sensitive language.
 
-      Output format:
-      Return a JSON object: {"content": "the cover letter text"} (no markdown, no code blocks).
-      The content should be plain text with proper paragraph breaks.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
-    const textContent = extractTextContent(response.data, 'content');
-    return { content: textContent };
+OUTPUT:
+Return ONLY JSON:
+{ "content": "plain text cover letter" }
+
+DATA:
+${JSON.stringify(anonymisedData, null, 2)}
+`;
+
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
+
+    return {
+      content: extractTextContent(response.data, "content"),
+    };
   },
 
-  async generateSOP(anonymisedData: any): Promise<any> {
-    const apiKey = await getApiKey();
+  async generateSOP(anonymisedData: any, trackUsage: boolean = true): Promise<any> {
     const prompt = `
-      You are an academic writing expert specializing in university admissions.
-      Using the anonymised candidate data provided, generate a formal Statement of Purpose (SOP).
+You are an academic writing expert.
 
-      Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+Generate a Statement of Purpose (600–800 words).
 
-      Rules:
-      - Suitable for Undergraduate, Postgraduate, or International programs.
-      - Focus on Education, Academic interests, Personal projects, and Career goals.
-      - Formal academic tone (avoid corporate language).
-      - Do NOT invent research or credentials.
-      - Neutralize sensitive or inappropriate content.
-      - Length: 600–800 words. Structured with logical paragraph flow.
+RULES:
+- Formal academic tone
+- Focus on education, projects, goals
+- DO NOT invent credentials
+- Neutralize sensitive language
 
-      Output format:
-      Return a JSON object: {"content": "the SOP text"} (no markdown, no code blocks).
-      The content should be plain text with proper paragraph breaks.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
-    const textContent = extractTextContent(response.data, 'content');
-    return { content: textContent };
-  }
+OUTPUT:
+Return ONLY JSON:
+{ "content": "plain text SOP" }
+
+DATA:
+${JSON.stringify(anonymisedData, null, 2)}
+`;
+
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
+
+    return {
+      content: extractTextContent(response.data, "content"),
+    };
+  },
 };

@@ -187,6 +187,7 @@ export interface UsageMetrics {
   apiHits: number;
   savedArtifacts: number;
   generatedArtifacts: number;
+  apiErrors: number;
 }
 
 export interface HealthStatus {
@@ -209,4 +210,39 @@ export interface HealthStatus {
     count: number;
     lastError?: string;
   };
+}
+
+export interface UserApiKey {
+  id: number;
+  userId: number;
+  provider: string;
+  tier: string;
+  encryptedApiKey: string;
+  isActive: boolean;
+  isDefault: boolean;
+  selectedTextModel?: string;
+  selectedImageModel?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiKeyRequest {
+  provider: string;
+  tier: string;
+  apiKey: string;
+  selectedTextModel?: string;
+  selectedImageModel?: string;
+}
+
+export interface AiProxyRequest {
+  appId: string;
+  modality: 'text' | 'image';
+  payload: any;
+}
+
+export interface UnlockStatus {
+  hasActiveApiKey: boolean;
+  acceptedAgreement: boolean;
+  unlocked: boolean;
+  lockedApps?: string[];
 }

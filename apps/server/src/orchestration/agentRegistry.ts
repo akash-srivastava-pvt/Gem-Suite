@@ -42,7 +42,7 @@ class AgentRegistry {
    * List agents by category/prefix
    */
   listByPrefix(prefix: string): Agent[] {
-    return Array.from(this.agents.values()).filter(agent => 
+    return Array.from(this.agents.values()).filter(agent =>
       agent.id.startsWith(prefix)
     );
   }

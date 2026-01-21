@@ -155,9 +155,10 @@ var init_jsonParser = __esm({
 });
 
 // src/server.ts
-var import_express9 = __toESM(require("express"), 1);
+var import_express12 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_path3 = __toESM(require("path"), 1);
+var import_fs3 = __toESM(require("fs"), 1);
 var import_config = require("dotenv/config");
 var import_url = require("url");
 
@@ -216,13 +217,61 @@ var DatabaseModel = class {
         const diskBuffer = import_fs.default.readFileSync(this.dbPath);
         this.db = new SQL.Database(diskBuffer);
         try {
-          this.db.run(`ALTER TABLE users ADD COLUMN geminiVersion TEXT DEFAULT '2'`);
-          console.log("\u2705 Added geminiVersion column to users table");
+          this.db.run(`CREATE TABLE IF NOT EXISTS user_api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            provider TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            encrypted_api_key TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            is_default BOOLEAN DEFAULT 0,
+            selected_text_model TEXT,
+            selected_image_model TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, provider, tier),
+            CHECK(is_default IN (0, 1)),
+            CHECK(is_active IN (0, 1))
+          )`);
+          this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_default_key ON user_api_keys(user_id) WHERE is_default = 1`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
+          this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            data TEXT NOT NULL,
+            data_type TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            metadata TEXT,
+            UNIQUE(app_name, filename)
+          )`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_app_name ON saved_artifacts(app_name)`);
+          this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            metadata TEXT
+          )`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
+          console.log("\u2705 Secondary tables and indexes verified/created");
+          const existingActivate = this.query("SELECT apiKey FROM activate WHERE id = 1");
+          if (existingActivate.length > 0) {
+            const apiKey = existingActivate[0].apiKey;
+            const existingApiKeys = this.query("SELECT COUNT(*) as count FROM user_api_keys WHERE user_id = 1");
+            if (existingApiKeys[0]?.count === 0) {
+              this.execute(`INSERT INTO user_api_keys (user_id, provider, tier, encrypted_api_key, is_active, is_default, selected_text_model, selected_image_model)
+                 VALUES (1, 'gemini', 'free', ?, 1, 1, 'gemini-2-flash', 'gemini-2-imagen')`, [apiKey]);
+              console.log("\u2705 Migrated existing API key to new system (unencrypted for compatibility)");
+              this.db.run("DROP TABLE IF EXISTS activate");
+              console.log("\u2705 Removed legacy activate table");
+            }
+          }
           this.saveToDisk();
         } catch (err) {
-          if (!err.message?.includes("duplicate column")) {
-            console.warn("Migration note:", err.message);
-          }
+          console.warn("DB initialization migration note:", err.message);
         }
       } else {
         console.log(`Creating new database at: ${this.dbPath}`);
@@ -230,13 +279,7 @@ var DatabaseModel = class {
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
           name TEXT,
-          personalAgreement BOOLEAN,
-          geminiVersion TEXT DEFAULT '2'
-        )`);
-        this.db.run(`CREATE TABLE IF NOT EXISTS activate (
-          id INTEGER PRIMARY KEY CHECK (id = 1),
-          apiKey TEXT NOT NULL,
-          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          personalAgreement BOOLEAN
         )`);
         this.db.run(`CREATE TABLE IF NOT EXISTS logger (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,34 +289,50 @@ var DatabaseModel = class {
         this.db.run(`CREATE TABLE IF NOT EXISTS resume (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
-          contacts TEXT,           -- JSON array of objects
-          links TEXT,              -- JSON array of objects
-          work_history TEXT,       -- JSON array of objects
-          education TEXT,          -- JSON array of objects
-          personal_projects TEXT,  -- JSON array of objects
-          skills TEXT,             -- JSON array of objects
-          cover_letter_para TEXT   -- long text
+          contacts TEXT,
+          links TEXT,
+          work_history TEXT,
+          education TEXT,
+          personal_projects TEXT,
+          skills TEXT,
+          cover_letter_para TEXT
       )`);
+        this.db.run(`CREATE TABLE IF NOT EXISTS user_api_keys (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL DEFAULT 1,
+          provider TEXT NOT NULL,
+          tier TEXT NOT NULL,
+          encrypted_api_key TEXT NOT NULL,
+          is_active BOOLEAN DEFAULT 1,
+          is_default BOOLEAN DEFAULT 0,
+          selected_text_model TEXT,
+          selected_image_model TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, provider, tier),
+          CHECK(is_default IN (0, 1)),
+          CHECK(is_active IN (0, 1))
+        )`);
         console.log("\u{1F4CB} Creating saved_artifacts table...");
         this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           app_name TEXT NOT NULL,
           filename TEXT NOT NULL,
-          data TEXT NOT NULL,           -- JSON string or base64 encoded data
-          data_type TEXT NOT NULL,      -- text | json | image | trip | resume | invitation
+          data TEXT NOT NULL,
+          data_type TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          metadata TEXT,                -- JSON metadata (optional)
-          UNIQUE(app_name, filename)    -- Prevent duplicate filenames per app
+          metadata TEXT,
+          UNIQUE(app_name, filename)
         )`);
         console.log("\u2705 saved_artifacts table created");
         console.log("\u{1F4CA} Creating usage_metrics table...");
         this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           app_name TEXT NOT NULL,
-          event_type TEXT NOT NULL,     -- api_hit | save | generate
+          event_type TEXT NOT NULL,
           timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          metadata TEXT                 -- JSON additional data (optional)
+          metadata TEXT
         )`);
         console.log("\u2705 usage_metrics table created");
         console.log("\u{1F50D} Creating indexes...");
@@ -281,6 +340,9 @@ var DatabaseModel = class {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_created_at ON saved_artifacts(created_at)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_timestamp ON usage_metrics(timestamp)`);
+        this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_default_key ON user_api_keys(user_id) WHERE is_default = 1`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
         console.log("\u2705 Indexes created");
         this.saveToDisk();
       }
@@ -291,6 +353,10 @@ var DatabaseModel = class {
     }
   }
   saveToDisk() {
+    if (!this.db) {
+      console.warn("Database save skipped: not initialized");
+      return;
+    }
     try {
       const data = this.db.export();
       import_fs.default.writeFileSync(this.dbPath, Buffer.from(data));
@@ -300,6 +366,9 @@ var DatabaseModel = class {
     }
   }
   query(sql, params = []) {
+    if (!this.db) {
+      throw new Error("Database not initialized. Ensure db.init() is called before usage.");
+    }
     const stmt = this.db.prepare(sql);
     stmt.bind(params);
     const results = [];
@@ -310,6 +379,9 @@ var DatabaseModel = class {
     return results;
   }
   execute(sql, params = []) {
+    if (!this.db) {
+      throw new Error("Database not initialized. Ensure db.init() is called before usage.");
+    }
     const result = this.db.run(sql, params);
     this.saveToDisk();
     return result;
@@ -318,7 +390,7 @@ var DatabaseModel = class {
 var db = new DatabaseModel();
 
 // src/routes/index.ts
-var import_express8 = require("express");
+var import_express11 = require("express");
 
 // src/routes/activateRoutes.ts
 var import_express = require("express");
@@ -401,374 +473,6 @@ async function decrypt(payload) {
   }
 }
 
-// src/models/userModel.ts
-var UserModel = {
-  getUser: () => {
-    const rows = db.query("SELECT * FROM users LIMIT 1");
-    if (rows.length > 0) {
-      const user = rows[0];
-      if (!user.geminiVersion) {
-        user.geminiVersion = "2";
-      }
-      return user;
-    }
-    return null;
-  },
-  createUser: (name) => {
-    db.execute(
-      "INSERT INTO users (name, personalAgreement, geminiVersion) VALUES (?, ?, ?)",
-      [name, true, "2"]
-    );
-    db.execute("INSERT INTO logger (event) VALUES (?)", [`User agreement signed by ${name}`]);
-  },
-  updateGeminiVersion: (version) => {
-    const user = UserModel.getUser();
-    if (user) {
-      db.execute(
-        "UPDATE users SET geminiVersion = ? WHERE id = ?",
-        [version, user.id]
-      );
-    }
-  },
-  getGeminiVersion: () => {
-    const user = UserModel.getUser();
-    return user?.geminiVersion || "2";
-  },
-  deleteData: () => {
-    db.execute("DELETE FROM users");
-    db.execute("DELETE FROM activate");
-    db.execute("DELETE FROM resume");
-    db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
-  },
-  hasAgreed: () => {
-    const user = UserModel.getUser();
-    return user ? !!user.personalAgreement : false;
-  }
-};
-
-// src/proxies/gemini2.ts
-var GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-var REQUEST_TIMEOUT = 3e4;
-var MAX_RETRIES = 2;
-async function callGemini(apiKey, prompt) {
-  if (!apiKey || !prompt) {
-    throw new Error("API key and prompt are required");
-  }
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-    try {
-      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-          // x-goog-api-key can also be used here, but query param is most reliable for fetch
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 7200
-          }
-        }),
-        signal: controller.signal
-        // Connect timeout signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorData = await response.json().catch(() => ({}));
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES) {
-          const delay = 1e3 * (attempt + 1);
-          await new Promise((r) => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(
-          errorData.error?.message || `Gemini request failed (${status})`
-        );
-      }
-      const resData = await response.json();
-      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error("Empty response from Gemini");
-      }
-      return { data: text };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < MAX_RETRIES) {
-          const delay = 1e3 * (attempt + 1);
-          await new Promise((r) => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < MAX_RETRIES) {
-        const delay = 1e3 * (attempt + 1);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Gemini request failed after retries");
-}
-
-// src/proxies/gemini3.ts
-var GEMINI_URL2 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
-var REQUEST_TIMEOUT2 = 45e3;
-var MAX_TOKENS = 7200;
-async function callGemini2(apiKey, prompt, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT2);
-    try {
-      const response = await fetch(`${GEMINI_URL2}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-          // Note: Gemini usually prefers key as a query param, 
-          // but some versions support x-goog-api-key header.
-        },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            maxOutputTokens: MAX_TOKENS,
-            temperature: 0.3
-          }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorBody = await response.json().catch(() => ({}));
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if (status === 429 && attempt < retries) {
-          const retryAfter = Number(response.headers.get("retry-after")) || 5;
-          const backoffMs = retryAfter * 1e3 + Math.random() * 1e3;
-          console.warn(`[Gemini] 429 received. Waiting ${backoffMs}ms before retry`);
-          await new Promise((r) => setTimeout(r, backoffMs));
-          continue;
-        }
-        if (status >= 400 && status < 500) {
-          throw new Error(errorBody.error?.message || `Gemini client error (${status})`);
-        }
-        if (attempt < retries) {
-          const backoffMs = 3e3 * (attempt + 1);
-          await new Promise((r) => setTimeout(r, backoffMs));
-          continue;
-        }
-        throw new Error(`Gemini request failed with status ${status}`);
-      }
-      const resData = await response.json();
-      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error("Empty Gemini response");
-      return { data: text };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < retries) {
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < retries) {
-        const backoffMs = 3e3 * (attempt + 1);
-        await new Promise((r) => setTimeout(r, backoffMs));
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Unreachable Gemini client state");
-}
-
-// src/proxies/gemini2img.ts
-var GEMINI_URL3 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
-var REQUEST_TIMEOUT3 = 3e4;
-var MAX_RETRIES2 = 2;
-async function callGemini3(apiKey, prompt) {
-  if (!apiKey || !prompt) {
-    throw new Error("API key and prompt are required");
-  }
-  for (let attempt = 0; attempt <= MAX_RETRIES2; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT3
-    );
-    try {
-      const response = await fetch(`${GEMINI_URL3}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            responseModalities: ["IMAGE"]
-          }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorText = await response.text();
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES2) {
-          await new Promise(
-            (r) => setTimeout(r, 1e3 * (attempt + 1))
-          );
-          continue;
-        }
-        throw new Error(
-          `Gemini request failed (${status}): ${errorText}`
-        );
-      }
-      const resData = await response.json();
-      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
-        (p) => p.inlineData
-      );
-      if (!imagePart?.inlineData?.data) {
-        throw new Error("No image returned from Gemini");
-      }
-      return {
-        image: {
-          mimeType: imagePart.inlineData.mimeType,
-          base64: imagePart.inlineData.data
-        }
-      };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < MAX_RETRIES2) {
-          await new Promise(
-            (r) => setTimeout(r, 1e3 * (attempt + 1))
-          );
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < MAX_RETRIES2) {
-        await new Promise(
-          (r) => setTimeout(r, 1e3 * (attempt + 1))
-        );
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Gemini request failed after retries");
-}
-
-// src/proxies/gemini3img.ts
-var GEMINI_URL4 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-image:generateContent";
-var REQUEST_TIMEOUT4 = 45e3;
-var MAX_RETRIES3 = 2;
-async function callGemini4(apiKey, prompt) {
-  if (!apiKey || !prompt) {
-    throw new Error("API key and prompt are required");
-  }
-  for (let attempt = 0; attempt <= MAX_RETRIES3; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT4
-    );
-    try {
-      const response = await fetch(`${GEMINI_URL4}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            responseModalities: ["IMAGE"]
-          }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const status = response.status;
-        const errorText = await response.text();
-        if (status === 401 || status === 403) {
-          throw new Error("Invalid Gemini API key");
-        }
-        if ((status === 429 || status >= 500) && attempt < MAX_RETRIES3) {
-          const backoffMs = 3e3 * (attempt + 1);
-          await new Promise(
-            (r) => setTimeout(r, backoffMs)
-          );
-          continue;
-        }
-        throw new Error(
-          `Gemini request failed (${status}): ${errorText}`
-        );
-      }
-      const resData = await response.json();
-      const imagePart = resData?.candidates?.[0]?.content?.parts?.find(
-        (p) => p.inlineData
-      );
-      if (!imagePart?.inlineData?.data) {
-        throw new Error("No image returned from Gemini");
-      }
-      return {
-        image: {
-          mimeType: imagePart.inlineData.mimeType,
-          base64: imagePart.inlineData.data
-        }
-      };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        if (attempt < MAX_RETRIES3) {
-          const backoffMs = 3e3 * (attempt + 1);
-          await new Promise(
-            (r) => setTimeout(r, backoffMs)
-          );
-          continue;
-        }
-        throw new Error("Gemini request timed out");
-      }
-      if (attempt < MAX_RETRIES3) {
-        const backoffMs = 3e3 * (attempt + 1);
-        await new Promise(
-          (r) => setTimeout(r, backoffMs)
-        );
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Gemini request failed after retries");
-}
-
 // src/utility/helper.ts
 var validateGeminiApiKey = async (apiKey, retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -799,26 +503,6 @@ var validateGeminiApiKey = async (apiKey, retries = 3) => {
   }
   return false;
 };
-async function getApiKey() {
-  const activate = await db.query("SELECT apiKey FROM activate WHERE id=1 LIMIT 1");
-  const key = activate[0].apiKey;
-  const decryptedKey = await decrypt(key);
-  return decryptedKey;
-}
-async function callGeminiWithUserPreference(apiKey, prompt) {
-  const version = UserModel.getGeminiVersion();
-  if (version === "3") {
-    return callGemini2(apiKey, prompt);
-  }
-  return callGemini(apiKey, prompt);
-}
-async function callGeminiImageWithUserPreference(apiKey, prompt) {
-  const version = UserModel.getGeminiVersion();
-  if (version === "3") {
-    return callGemini4(apiKey, prompt);
-  }
-  return callGemini3(apiKey, prompt);
-}
 
 // src/models/loggerModel.ts
 var LoggerModel = {
@@ -2090,6 +1774,7 @@ var tripPlannerWorkflow = {
       agentId: "trip-route-agent",
       input: (results) => {
         const inputData = results.initial?.data || results.initial || {};
+        console.log("Input Data", inputData);
         return {
           places: inputData.places,
           startLocation: inputData.startLocation,
@@ -2105,77 +1790,44 @@ var tripPlannerWorkflow = {
     {
       id: "cost",
       agentId: "trip-cost-agent",
-      input: (results) => results.route,
+      input: (results) => ({
+        ...results.route,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ["route"],
       timeout: 3e4
     },
     {
       id: "weather",
       agentId: "trip-weather-agent",
-      input: (results) => results.cost,
+      input: (results) => ({
+        ...results.cost,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ["cost"],
       timeout: 3e4
     },
     {
       id: "localization",
       agentId: "trip-localization-agent",
-      input: (results) => results.weather,
+      input: (results) => ({
+        ...results.weather,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ["weather"],
       timeout: 3e4
-    }
-  ],
-  onError: "continue"
-};
-var resumeMakerWorkflow = {
-  id: "resume-maker-workflow",
-  name: "Resume Generation Workflow",
-  steps: [
-    {
-      id: "draft",
-      agentId: "resume-main-agent",
-      input: (results) => ({ anonymisedData: results.initial?.anonymisedData || results.initial }),
-      timeout: 6e4
     },
     {
-      id: "grammar",
-      agentId: "resume-grammar-agent",
-      input: (results) => {
-        if (!results.draft) {
-          throw new Error("Draft step failed or returned no result");
-        }
-        return { resume: results.draft };
-      },
-      dependsOn: ["draft"],
-      timeout: 45e3
-    },
-    {
-      id: "ats",
-      agentId: "resume-ats-scoring-agent",
-      input: (results) => {
-        const resume = results.grammar || results.draft;
-        if (!resume) {
-          throw new Error("No resume data available from previous steps");
-        }
-        return {
-          resume,
-          jobDescription: results.initial?.jobDescription,
-          industry: results.initial?.industry
-        };
-      },
-      dependsOn: ["grammar"],
-      timeout: 45e3
-    },
-    {
-      id: "format",
-      agentId: "resume-formatting-agent",
-      input: (results) => {
-        const resume = results.ats || results.grammar || results.draft;
-        if (!resume) {
-          throw new Error("No resume data available from previous steps");
-        }
-        return resume;
-      },
-      dependsOn: ["ats"],
+      id: "validator",
+      agentId: "trip-validator-agent",
+      input: (results) => ({
+        ...results.localization,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1,
+        startLocation: results.route?.startLocation,
+        endLocation: results.route?.endLocation,
+        tripType: results.route?.tripType
+      }),
+      dependsOn: ["localization"],
       timeout: 3e4
     }
   ],
@@ -2459,31 +2111,35 @@ var SaveService = class {
   async getUsageMetrics() {
     try {
       console.log("\u{1F4CA} Server: Fetching usage metrics from database...");
+      const allApps = ["texteditor", "tripplanner", "invitation", "resumemaker"];
       const rows = db.query(`
         SELECT
           app_name,
           SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
           SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
         FROM usage_metrics
         GROUP BY app_name
         ORDER BY app_name
       `);
-      if (rows.length === 0) {
-        return [
-          { appName: "texteditor", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: "tripplanner", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: "invitation", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: "resumemaker", apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 }
-        ];
-      }
-      const result = rows.map((row) => ({
-        appName: row.app_name,
-        apiHits: row.api_hits,
-        savedArtifacts: row.saved_artifacts,
-        generatedArtifacts: row.generated_artifacts
-      }));
-      console.log("\u{1F4CA} Server: Returning metrics:", result);
+      const metricsMap = /* @__PURE__ */ new Map();
+      rows.forEach((row) => {
+        metricsMap.set(row.app_name, {
+          appName: row.app_name,
+          apiHits: row.api_hits,
+          savedArtifacts: row.saved_artifacts,
+          generatedArtifacts: row.generated_artifacts,
+          apiErrors: row.api_errors
+        });
+      });
+      const result = allApps.map((appName) => metricsMap.get(appName) || {
+        appName,
+        apiHits: 0,
+        savedArtifacts: 0,
+        generatedArtifacts: 0,
+        apiErrors: 0
+      });
       return result;
     } catch (error) {
       console.error("SaveService.getUsageMetrics error:", error);
@@ -2500,7 +2156,8 @@ var SaveService = class {
           app_name,
           SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
           SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
         FROM usage_metrics
         WHERE app_name = ?
         GROUP BY app_name
@@ -2513,7 +2170,8 @@ var SaveService = class {
         appName: row.app_name,
         apiHits: row.api_hits,
         savedArtifacts: row.saved_artifacts,
-        generatedArtifacts: row.generated_artifacts
+        generatedArtifacts: row.generated_artifacts,
+        apiErrors: row.api_errors
       };
     } catch (error) {
       console.error("SaveService.getAppUsageMetrics error:", error);
@@ -2550,6 +2208,7 @@ var saveService = new SaveService();
 async function TripController(req, res) {
   try {
     const { data } = req.body;
+    console.log("Trip Input Data", data);
     if (!Array.isArray(data.places) || data.places.length === 0) {
       return res.status(400).json({ error: "At least one place must be selected" });
     }
@@ -2564,21 +2223,33 @@ async function TripController(req, res) {
     if (end <= start) {
       return res.status(400).json({ error: "End date must be after start date" });
     }
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      return res.status(401).json({ error: "API Key not found. Please activate first." });
-    }
-    await saveService.trackUsage("tripplanner", "api_hit", {
-      places: data.places.length,
-      tripType: data.tripType
-    });
     LoggerModel.log(`Starting trip planning workflow: ${data.places.join(", ")}`);
-    const result = await agentOrchestrator.executeWorkflow(tripPlannerWorkflow, { data });
+    await saveService.trackUsage("tripplanner", "api_hit", { places: data.places.length });
+    const result = await agentOrchestrator.executeWorkflow(tripPlannerWorkflow, {
+      data,
+      trackUsage: false
+      // Disable internal tracking in AiProxy
+    });
     if (!result.success) {
-      console.error("Workflow errors:", result.errors);
+      console.error("Trip workflow errors:", result.errors);
       return res.status(500).json({
         error: "Trip planning workflow failed",
         details: result.errors
+      });
+    }
+    const workflowResults = result.results || {};
+    const finalResult = {
+      ...workflowResults.route || {},
+      ...workflowResults.cost || {},
+      ...workflowResults.weather || {},
+      ...workflowResults.localization || {},
+      ...workflowResults.validator || {}
+    };
+    if (Object.keys(finalResult).length === 0) {
+      console.error("Trip workflow produced no results:", result);
+      return res.status(500).json({
+        error: "Trip planning completed but produced no results",
+        details: "All workflow steps returned empty data"
       });
     }
     await saveService.trackUsage("tripplanner", "generate", {
@@ -2588,15 +2259,14 @@ async function TripController(req, res) {
     LoggerModel.log(`Trip planning completed: ${data.places.join(", ")}`);
     return res.status(200).json({
       success: true,
-      data: {
-        ...result.results.localization,
-        ...result.results.weather,
-        ...result.results.cost,
-        ...result.results.route
-      }
+      data: finalResult
     });
   } catch (error) {
     console.error("Trip planning failed:", error);
+    await saveService.trackUsage("tripplanner", "api_error", {
+      error: error.message,
+      places: req.body?.data?.places?.length
+    });
     if (error instanceof ValidationError) {
       return res.status(400).json({ error: error.message });
     }
@@ -2622,60 +2292,56 @@ async function TextEditorController(req, res) {
       return res.status(400).json({ success: false, error: "intent and text required" });
     }
     const { intent, text, language, tone, style } = data;
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      throw new Error("Gemini API key missing");
-    }
-    await saveService.trackUsage("texteditor", "api_hit", {
-      intent,
-      textLength: text.length,
-      language,
-      tone,
-      style
-    });
-    const complexIntents = ["rewrite", "continue"];
-    const useWorkflow = complexIntents.includes(intent) && (style || tone);
-    if (useWorkflow) {
-      LoggerModel.log(`Using workflow for text editing: ${intent}`);
+    LoggerModel.log(`Starting text editor request: ${intent}`);
+    await saveService.trackUsage("texteditor", "api_hit", { intent });
+    let finalResult;
+    const isSimpleIntent = ["translate", "summarize", "grammar", "rewrite", "autocomplete", "continue"].includes(intent);
+    if (isSimpleIntent) {
+      LoggerModel.log(`Executing simple intent: ${intent}`);
+      finalResult = await agentOrchestrator.callAgent("text-editor-main-agent", {
+        intent,
+        text,
+        language: language || "english",
+        tone: tone || "professional",
+        trackUsage: false
+        // Disable internal tracking in AiProxy
+      });
+    } else {
       const result = await agentOrchestrator.executeWorkflow(textEditorWorkflow, {
         intent,
         text,
-        language,
-        tone,
-        style
+        language: language || "english",
+        tone: tone || "professional",
+        style: style || "business",
+        trackUsage: false
+        // Pass to all steps
       });
       if (!result.success) {
-        throw new Error(`Workflow failed: ${JSON.stringify(result.errors)}`);
+        console.error("Text editor workflow errors:", result.errors);
+        return res.status(500).json({
+          success: false,
+          error: "Text editing workflow failed",
+          details: result.errors
+        });
       }
-      const finalResult = result.results.tone || result.results.style || result.results.grammar || result.results.edit;
-      LoggerModel.log(`Text editing workflow completed: ${intent}`);
-      await saveService.trackUsage("texteditor", "generate", {
-        intent,
-        workflow: true
-      });
-      return res.status(200).json({
-        success: true,
-        data: finalResult
-      });
-    } else {
-      LoggerModel.log(`Using direct agent for text editing: ${intent}`);
-      const result = await agentOrchestrator.callAgent("text-editor-main-agent", {
-        intent,
-        text,
-        language,
-        tone
-      });
-      await saveService.trackUsage("texteditor", "generate", {
-        intent,
-        workflow: false
-      });
-      return res.status(200).json({
-        success: true,
-        data: result
+      const workflowResults = result.results || {};
+      finalResult = workflowResults.tone || workflowResults.style || workflowResults.grammar || workflowResults.edit;
+    }
+    if (!finalResult) {
+      return res.status(500).json({
+        success: false,
+        error: "Text editing completed but produced no results"
       });
     }
+    await saveService.trackUsage("texteditor", "generate", { intent });
+    LoggerModel.log(`Text editing completed: ${intent}`);
+    return res.status(200).json({
+      success: true,
+      data: finalResult
+    });
   } catch (err) {
     console.error("TextEditorController error:", err);
+    await saveService.trackUsage("texteditor", "api_error", { error: err.message, intent: req.body?.data?.intent });
     return res.status(500).json({
       success: false,
       error: err.message
@@ -2713,18 +2379,8 @@ async function WeddingInvitationController(req, res) {
     if (!date || !time || !venue) {
       return res.status(400).json({ error: "Date, time, and venue are required" });
     }
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      return res.status(401).json({
-        error: "Gemini API key not found. Please activate first."
-      });
-    }
-    await saveService.trackUsage("invitation", "api_hit", {
-      theme: "wedding",
-      religion,
-      language
-    });
     LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
+    await saveService.trackUsage("invitation", "api_hit", { theme: "wedding", religion });
     const invitationData = {
       theme: "wedding",
       groomName,
@@ -2739,7 +2395,9 @@ async function WeddingInvitationController(req, res) {
     };
     const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
       data: invitationData,
-      theme: "wedding"
+      theme: "wedding",
+      trackUsage: false
+      // Disable internal tracking
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
@@ -2748,10 +2406,11 @@ async function WeddingInvitationController(req, res) {
         details: result.errors
       });
     }
+    const workflowResults = result.results || {};
     const finalResult = {
-      ...result.results.design,
-      ...result.results.localization,
-      ...result.results.quality
+      ...workflowResults.design || {},
+      ...workflowResults.localization || {},
+      ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
       return res.status(502).json({
@@ -2775,6 +2434,12 @@ async function WeddingInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Wedding invitation generation failed:", error);
+    await saveService.trackUsage("invitation", "api_error", {
+      error: error.message,
+      theme: "wedding",
+      brideName: req.body?.data?.brideName,
+      groomName: req.body?.data?.groomName
+    });
     if (error instanceof ValidationError) {
       return res.status(400).json({ error: error.message });
     }
@@ -2810,17 +2475,12 @@ async function EventInvitationController(req, res) {
     if (!date || !venue) {
       return res.status(400).json({ error: "Date and venue are required" });
     }
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      return res.status(401).json({
-        error: "Gemini API key not found. Please activate first."
-      });
-    }
     LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+    await saveService.trackUsage("invitation", "api_hit", { theme: "event", eventTheme: theme });
     const invitationData = {
       theme: "event",
       eventName,
-      eventType: theme,
+      eventTheme: theme,
       date,
       venue,
       language,
@@ -2830,7 +2490,9 @@ async function EventInvitationController(req, res) {
     };
     const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
       data: invitationData,
-      theme: "event"
+      theme: "event",
+      trackUsage: false
+      // Disable internal tracking
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
@@ -2839,16 +2501,22 @@ async function EventInvitationController(req, res) {
         details: result.errors
       });
     }
+    const workflowResults = result.results || {};
     const finalResult = {
-      ...result.results.design,
-      ...result.results.localization,
-      ...result.results.quality
+      ...workflowResults.design || {},
+      ...workflowResults.localization || {},
+      ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
       return res.status(502).json({
         error: "Gemini did not return an image"
       });
     }
+    await saveService.trackUsage("invitation", "generate", {
+      theme: "event",
+      eventTheme: theme,
+      language
+    });
     LoggerModel.log(`Event invitation generation completed: ${eventName}`);
     return res.status(200).json({
       success: true,
@@ -2861,6 +2529,11 @@ async function EventInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Event invitation generation failed:", error);
+    await saveService.trackUsage("invitation", "api_error", {
+      error: error.message,
+      theme: "event",
+      eventName: req.body?.data?.eventName
+    });
     if (error instanceof ValidationError) {
       return res.status(400).json({ error: error.message });
     }
@@ -2899,13 +2572,8 @@ async function GreetingInvitationController(req, res) {
     if (!fromName || fromName.trim() === "") {
       return res.status(400).json({ error: "From name is required" });
     }
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      return res.status(401).json({
-        error: "Gemini API key not found. Please activate first."
-      });
-    }
     LoggerModel.log(`Starting greeting card generation workflow: ${greeting}`);
+    await saveService.trackUsage("invitation", "api_hit", { theme: "greetings", greetingType: theme });
     const invitationData = {
       theme: "greetings",
       greetingType: theme,
@@ -2917,7 +2585,9 @@ async function GreetingInvitationController(req, res) {
     };
     const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
       data: invitationData,
-      theme: "greetings"
+      theme: "greetings",
+      trackUsage: false
+      // Disable internal tracking
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
@@ -2926,10 +2596,11 @@ async function GreetingInvitationController(req, res) {
         details: result.errors
       });
     }
+    const workflowResults = result.results || {};
     const finalResult = {
-      ...result.results.design,
-      ...result.results.localization,
-      ...result.results.quality
+      ...workflowResults.design || {},
+      ...workflowResults.localization || {},
+      ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
       return res.status(502).json({
@@ -2937,6 +2608,11 @@ async function GreetingInvitationController(req, res) {
       });
     }
     LoggerModel.log(`Greeting card generation completed: ${greeting}`);
+    await saveService.trackUsage("invitation", "generate", {
+      theme: "greetings",
+      greetingType: theme,
+      language
+    });
     return res.status(200).json({
       success: true,
       image: {
@@ -2948,6 +2624,11 @@ async function GreetingInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Greeting card generation failed:", error);
+    await saveService.trackUsage("invitation", "api_error", {
+      error: error.message,
+      theme: "greetings",
+      greetingType: req.body?.data?.theme
+    });
     if (error instanceof ValidationError) {
       return res.status(400).json({ error: error.message });
     }
@@ -2978,6 +2659,47 @@ var invitationRoutes_default = router4;
 // src/routes/user.routes.ts
 var import_express5 = require("express");
 
+// src/models/userModel.ts
+var UserModel = {
+  getUser: () => {
+    const rows = db.query("SELECT * FROM users LIMIT 1");
+    if (rows.length > 0) {
+      return rows[0];
+    }
+    return null;
+  },
+  createUser: (name) => {
+    db.execute(
+      "INSERT INTO users (name, personalAgreement) VALUES (?, ?)",
+      [name, true]
+    );
+    db.execute("INSERT INTO logger (event) VALUES (?)", [`User agreement signed by ${name}`]);
+  },
+  deleteData: () => {
+    try {
+      db.execute("BEGIN TRANSACTION");
+      db.execute("DELETE FROM users");
+      db.execute("DELETE FROM resume");
+      db.execute("DELETE FROM user_api_keys");
+      db.execute("DELETE FROM usage_metrics");
+      db.execute("DELETE FROM saved_artifacts");
+      try {
+        db.execute("DELETE FROM activate");
+      } catch (e) {
+      }
+      db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
+      db.execute("COMMIT");
+    } catch (error) {
+      db.execute("ROLLBACK");
+      throw error;
+    }
+  },
+  hasAgreed: () => {
+    const user = UserModel.getUser();
+    return user ? !!user.personalAgreement : false;
+  }
+};
+
 // src/controllers/userController.ts
 var UserController = {
   getStatus: (req, res) => {
@@ -2985,25 +2707,11 @@ var UserController = {
       const user = UserModel.getUser();
       return res.json({
         agreed: user ? !!user.personalAgreement : false,
-        name: user?.name,
-        geminiVersion: user?.geminiVersion || "2"
+        name: user?.name
       });
     } catch (error) {
       console.error("[USER][GET_STATUS]", error);
       return res.status(500).json({ error: "Failed to get user status" });
-    }
-  },
-  updateGeminiVersion: (req, res) => {
-    try {
-      const { version } = req.body;
-      if (version !== "2" && version !== "3") {
-        return res.status(400).json({ error: 'Version must be "2" or "3"' });
-      }
-      UserModel.updateGeminiVersion(version);
-      return res.json({ success: true, geminiVersion: version });
-    } catch (error) {
-      console.error("[USER][UPDATE_GEMINI_VERSION]", error);
-      return res.status(500).json({ error: "Failed to update Gemini version" });
     }
   },
   agree: (req, res) => {
@@ -3051,7 +2759,6 @@ router5.get("/status", UserController.getStatus);
 router5.post("/agree", UserController.agree);
 router5.get("/logs", UserController.getLogs);
 router5.post("/delete-data", UserController.deleteData);
-router5.post("/gemini-version", UserController.updateGeminiVersion);
 var user_routes_default = router5;
 
 // src/routes/resumeRoutes.ts
@@ -3141,191 +2848,539 @@ var AuditLogService = {
   }
 };
 
+// src/proxies/proxy.config.ts
+var PROXY_CONFIGS = {
+  // Gemini Text Models
+  "gemini-2.0-flash": {
+    provider: "gemini",
+    model: "gemini-2.0-flash",
+    modality: "text",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    endpoint: "/models/{model}:generateContent",
+    timeout: 3e4,
+    maxRetries: 2
+  },
+  "gemini-3-flash-preview": {
+    provider: "gemini",
+    model: "gemini-3-flash-preview",
+    modality: "text",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    endpoint: "/models/{model}:generateContent",
+    timeout: 45e3,
+    maxRetries: 2
+  },
+  "gemini-2.5-flash": {
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    modality: "text",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    endpoint: "/models/{model}:generateContent",
+    timeout: 45e3,
+    maxRetries: 2
+  },
+  // Gemini Image Models
+  "gemini-3-flash-image": {
+    provider: "gemini",
+    model: "gemini-3-flash-image",
+    modality: "image",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    endpoint: "/models/{model}:generateContent",
+    timeout: 6e4,
+    maxRetries: 2
+  },
+  "gemini-2.5-flash-image": {
+    provider: "gemini",
+    model: "gemini-2.5-flash-image",
+    modality: "image",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    endpoint: "/models/{model}:generateContent",
+    timeout: 6e4,
+    maxRetries: 2
+  }
+};
+function getProxyConfig(modelId) {
+  return PROXY_CONFIGS[modelId] || null;
+}
+function listAvailableModels(provider, modality) {
+  return Object.keys(PROXY_CONFIGS).filter((modelId) => {
+    const config = PROXY_CONFIGS[modelId];
+    if (provider && config.provider !== provider) return false;
+    if (modality && config.modality !== modality) return false;
+    return true;
+  });
+}
+
+// src/proxies/unified.proxy.ts
+var UnifiedProxy = class {
+  async execute(request) {
+    const config = getProxyConfig(request.model);
+    if (!config) {
+      throw new Error(`Unsupported model: ${request.model}`);
+    }
+    switch (config.provider) {
+      case "gemini":
+        return this.executeGemini(request, config);
+      case "openai":
+        return this.executeOpenAI(request, config);
+      default:
+        throw new Error(`Unsupported provider: ${config.provider}`);
+    }
+  }
+  async executeGemini(request, config) {
+    const url = `${config.baseUrl}${config.endpoint.replace("{model}", config.model)}?key=${request.apiKey}`;
+    console.log(`[UNIFIED_PROXY] Model: ${config.model}, Modality: ${config.modality}`);
+    const payload = {
+      contents: [{
+        role: "user",
+        parts: [{ text: request.prompt }]
+      }],
+      generationConfig: {
+        temperature: request.options?.temperature || 0.4,
+        maxOutputTokens: request.options?.maxTokens || 7200
+      }
+    };
+    if (config.modality === "image") {
+      payload.generationConfig.responseModalities = ["IMAGE"];
+    }
+    for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), config.timeout);
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          const status = response.status;
+          if (status === 401 || status === 403) {
+            throw new Error("Invalid API key");
+          }
+          if (status === 429) {
+            if (attempt < config.maxRetries) {
+              await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+              continue;
+            }
+            throw new Error("Quota exhausted (429). Please check your API limits.");
+          }
+          if (status >= 500 && attempt < config.maxRetries) {
+            await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+            continue;
+          }
+          throw new Error(`HTTP ${status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (config.modality === "image") {
+          const imagePart = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
+          if (!imagePart?.inlineData?.data) {
+            throw new Error("No image returned");
+          }
+          return {
+            image: {
+              mimeType: imagePart.inlineData.mimeType,
+              base64: imagePart.inlineData.data
+            }
+          };
+        } else {
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) {
+            throw new Error("No text returned");
+          }
+          return { data: text };
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === "AbortError") {
+          if (attempt < config.maxRetries) {
+            continue;
+          }
+          throw new Error("Request timeout");
+        }
+        if (attempt < config.maxRetries) {
+          await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Request failed after retries");
+  }
+  async executeOpenAI(request, config) {
+    const url = `${config.baseUrl}${config.endpoint}`;
+    let payload;
+    if (config.modality === "image") {
+      payload = {
+        model: config.model,
+        prompt: request.prompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      };
+    } else {
+      payload = {
+        model: config.model,
+        messages: [{ role: "user", content: request.prompt }],
+        temperature: request.options?.temperature || 0.4,
+        max_tokens: request.options?.maxTokens || 4e3
+      };
+    }
+    for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), config.timeout);
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${request.apiKey}`
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          const status = response.status;
+          if (status === 401 || status === 403) {
+            throw new Error("Invalid API key");
+          }
+          if (status === 429) {
+            if (attempt < config.maxRetries) {
+              await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+              continue;
+            }
+            throw new Error("Quota exhausted (429). Please check your API limits.");
+          }
+          if (status >= 500 && attempt < config.maxRetries) {
+            await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+            continue;
+          }
+          throw new Error(`HTTP ${status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (config.modality === "image") {
+          const imageData = data?.data?.[0]?.b64_json;
+          if (!imageData) {
+            throw new Error("No image returned");
+          }
+          return {
+            image: {
+              mimeType: "image/png",
+              base64: imageData
+            }
+          };
+        } else {
+          const text = data?.choices?.[0]?.message?.content;
+          if (!text) {
+            throw new Error("No text returned");
+          }
+          return { data: text };
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === "AbortError") {
+          if (attempt < config.maxRetries) {
+            continue;
+          }
+          throw new Error("Request timeout");
+        }
+        if (attempt < config.maxRetries) {
+          await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Request failed after retries");
+  }
+};
+var unifiedProxy = new UnifiedProxy();
+
+// src/ai/ai-proxy.service.ts
+var ApiKeyManager = class {
+  static async getActiveApiKey() {
+    const newKeys = db.query(
+      "SELECT encrypted_api_key, provider, tier, selected_text_model, selected_image_model FROM user_api_keys WHERE user_id = 1 AND is_active = 1 ORDER BY is_default DESC LIMIT 1"
+    );
+    if (newKeys.length === 0) {
+      return null;
+    }
+    try {
+      const decryptedKey = await decrypt(newKeys[0].encrypted_api_key);
+      return {
+        apiKey: decryptedKey,
+        provider: newKeys[0].provider,
+        tier: newKeys[0].tier,
+        selectedTextModel: newKeys[0].selected_text_model,
+        selectedImageModel: newKeys[0].selected_image_model
+      };
+    } catch (decryptError) {
+      return {
+        apiKey: newKeys[0].encrypted_api_key,
+        provider: newKeys[0].provider,
+        tier: newKeys[0].tier,
+        selectedTextModel: newKeys[0].selected_text_model,
+        selectedImageModel: newKeys[0].selected_image_model
+      };
+    }
+  }
+  static selectModel(keyResult, modality, requestedModel) {
+    if (requestedModel) {
+      const availableModels = listAvailableModels(keyResult.provider, modality);
+      if (availableModels.includes(requestedModel)) {
+        return requestedModel;
+      }
+    }
+    if (modality === "text" && keyResult.selectedTextModel) {
+      return keyResult.selectedTextModel;
+    }
+    if (modality === "image" && keyResult.selectedImageModel) {
+      return keyResult.selectedImageModel;
+    }
+    const modelMap = {
+      gemini: {
+        free: {
+          text: "gemini-3-flash-preview",
+          image: "gemini-2.5-flash-image"
+        },
+        paid: {
+          text: "gemini-2.0-flash",
+          image: "gemini-3-flash-image"
+        }
+      }
+    };
+    return modelMap[keyResult.provider]?.[keyResult.tier]?.[modality] || "gemini-3-flash-preview";
+  }
+};
+var AiProxyService = class {
+  static async execute(request) {
+    const { appId, modality, payload, model: requestedModel, trackUsage = true } = request;
+    const keyResult = await ApiKeyManager.getActiveApiKey();
+    if (!keyResult) {
+      throw new Error("No API key configured. Please add an API key in Profile settings.");
+    }
+    const model = ApiKeyManager.selectModel(keyResult, modality, requestedModel);
+    const start = Date.now();
+    if (trackUsage) {
+      await saveService.trackUsage(appId, "api_hit", { model, modality });
+    }
+    try {
+      const result = await unifiedProxy.execute({
+        model,
+        prompt: payload.prompt,
+        apiKey: keyResult.apiKey,
+        options: {
+          temperature: payload.temperature,
+          maxTokens: payload.maxTokens
+        }
+      });
+      if (trackUsage) {
+        await saveService.trackUsage(appId, "generate", { model, duration: Date.now() - start });
+      }
+      return result;
+    } catch (error) {
+      console.error("AI Proxy Execution Failed:", error);
+      const duration = Date.now() - start;
+      if (trackUsage) {
+        await saveService.trackUsage(appId, "api_error", {
+          model,
+          provider: keyResult.provider,
+          duration,
+          error: error.message
+        });
+      }
+      throw error;
+    }
+  }
+  static async listModels() {
+    const providers = ["gemini", "openai"];
+    return providers.map((provider) => ({
+      provider,
+      models: listAvailableModels(provider)
+    }));
+  }
+};
+
 // src/services/GeminiTransformService.ts
 init_jsonParser();
+function normalizeSkills(skills) {
+  if (!skills) return {};
+  if (typeof skills === "object" && !Array.isArray(skills)) {
+    return Object.fromEntries(
+      Object.entries(skills).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? v.filter(Boolean) : []
+      ])
+    );
+  }
+  if (Array.isArray(skills)) {
+    return {
+      Tools: skills.filter(Boolean)
+    };
+  }
+  return {};
+}
 var GeminiTransformService = {
-  async generateATSResume(anonymisedData) {
-    const apiKey = await getApiKey();
+  async generateATSResume(anonymisedData, trackUsage = true) {
     const workHistory = anonymisedData.work_history || [];
     const education = anonymisedData.education || [];
     const personalProjects = anonymisedData.personal_projects || [];
-    const skills = anonymisedData.skills || [];
     const contacts = anonymisedData.contacts || [];
     const links = anonymisedData.links || [];
+    const inputSkills = normalizeSkills(anonymisedData.skills);
     const prompt = `
-      You are a professional resume writer and ATS optimization expert.
-      Using the provided anonymised candidate data, generate a COMPLETE and ATS-friendly resume.
-      
-      CRITICAL: You MUST preserve ALL data from the input. Do NOT omit any work history, education, projects, or skills.
+You are a professional resume writer and ATS optimization expert.
 
-      Input Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+CRITICAL INSTRUCTIONS (MUST FOLLOW):
+- DO NOT omit, remove, or merge any input data.
+- DO NOT invent new experience, education, or projects.
+- Preserve ALL entries from input arrays.
 
-      Rules:
-      1. PRESERVE ALL INPUT DATA:
-         - Include EVERY work history entry from input (work_history array)
-         - Include EVERY education entry from input (education array)
-         - Include EVERY personal project from input (personal_projects array)
-         - Include EVERY skill from input (skills array)
-         - Include ALL contacts and links from input
-      
-      2. ENHANCEMENT (do not remove, only improve):
-         - Rewrite descriptions professionally with action verbs
-         - Convert work_history descriptions to bullet points in highlights array
-         - Optimize for ATS keyword scanning
-         - Maintain professional tone
-         - Do NOT invent or hallucinate any new experience/education/projects
-      
-      3. STRUCTURE:
-         - Convert work_history to work_experience format for processing
-         - Convert personal_projects to projects format for processing
-         - Generate a comprehensive, granular, and categorized list of *individual skills* under 'Frontend', 'Backend', and 'Tools'. Each skill entry MUST be a specific technology, methodology, or tool (e.g., 'React', 'TypeScript', 'Node.js', 'SQL', 'Git'), NOT a generic category (e.g., 'Frontend Development', 'Backend Development', 'Development Tools'). If input skills are generic, break them down into specific keywords. Do NOT use generic categories like 'Technical Skills'.
+INPUT DATA:
+${JSON.stringify(anonymisedData, null, 2)}
 
-      Output format:
-      IMPORTANT: Return ONLY valid JSON. Do NOT include markdown code blocks, backticks, or any formatting.
-      Return STRICT JSON matching the input structure but with enhanced content:
-      {
-        "name": "CANDIDATE_NAME",
-        "summary": "Professional summary based on ALL work history and skills provided",
-        "contacts": [{"key": "string", "value": "string"}],
-        "links": [{"key": "string", "value": "string"}],
-        "skills": {
-          "Frontend": ["skill1", "skill2"],
-          "Backend": ["skill1", "skill2"],
-          "Tools": ["tool1", "tool2"]
-        },
-        "work_experience": [
-          {
-            "title": "role from input",
-            "organization": "company from input",
-            "duration": "duration from input",
-            "highlights": ["bullet point 1 from description", "bullet point 2 from description", ...]
-          }
-        ],
-        "education": [
-          {
-            "degree": "degree from input",
-            "institution": "institution from input",
-            "details": "details from input (may include year)"
-          }
-        ],
-        "projects": [
-          {
-            "name": "name/title from input",
-            "description": "enhanced description from input"
-          }
-        ]
-      }
-      
-      REMEMBER: Include ALL entries from input arrays. If input has 2 work_history entries, output must have 2 work_experience entries.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+TASKS:
+1. Rewrite content professionally using action verbs.
+2. Convert work_history \u2192 work_experience with bullet highlights.
+3. Convert personal_projects \u2192 projects.
+4. Optimize language for ATS scanning.
+5. Skills MUST be returned as array of strings:
+
+"skills": [string]
+
+RULES FOR SKILLS:
+- Each skill must be a specific technology, tool, or methodology.
+- NO generic terms like "Frontend Development".
+- If skills are generic, break them into atomic keywords, but array of strings only
+
+OUTPUT FORMAT:
+Return ONLY valid JSON (no markdown, no backticks):
+
+{
+  "name": "string",
+  "summary": "string",
+  "contacts": [{ "key": "string", "value": "string" }],
+  "links": [{ "key": "string", "value": "string" }],
+  "skills": [string],
+  "work_experience": [
+    {
+      "title": "string",
+      "organization": "string",
+      "duration": "string",
+      "highlights": ["string"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "string",
+      "institution": "string",
+      "details": "string"
+    }
+  ],
+  "projects": [
+    {
+      "name": "string",
+      "description": "string"
+    }
+  ]
+}
+
+IMPORTANT:
+If input has N entries, output MUST have N entries.
+`;
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
     const result = parseAIJSON(response.data);
     return {
       name: result.name || anonymisedData.name || "CANDIDATE_NAME",
       summary: result.summary || "",
-      contacts: result.contacts && result.contacts.length > 0 ? result.contacts : contacts,
-      links: result.links && result.links.length > 0 ? result.links : links,
-      skills: result.skills && Object.keys(result.skills).length > 0 ? result.skills : skills,
-      work_experience: result.work_experience && result.work_experience.length > 0 ? result.work_experience : workHistory.map((w) => ({
+      contacts: Array.isArray(result.contacts) && result.contacts.length ? result.contacts : contacts,
+      links: Array.isArray(result.links) && result.links.length ? result.links : links,
+      skills: Array.isArray(result.skills) && result.skills.length ? result.skills : inputSkills,
+      work_experience: Array.isArray(result.work_experience) && result.work_experience.length ? result.work_experience : workHistory.map((w) => ({
         title: w.role || w.title || "",
         organization: w.company || w.organization || "",
         duration: w.duration || "",
-        highlights: w.description ? w.description.split("\n").filter((l) => l.trim()) : []
+        highlights: Array.isArray(w.description) ? w.description : typeof w.description === "string" ? w.description.split("\n").filter(Boolean) : []
       })),
-      education: result.education && result.education.length > 0 ? result.education : education.map((e) => ({
+      education: Array.isArray(result.education) && result.education.length ? result.education : education.map((e) => ({
         degree: e.degree || "",
         institution: e.institution || "",
-        details: e.details || (e.year ? `${e.year} - ${e.details}` : "")
+        details: e.details || (e.year ? `${e.year}` : "")
       })),
-      projects: result.projects && result.projects.length > 0 ? result.projects : personalProjects.map((p) => ({
+      projects: Array.isArray(result.projects) && result.projects.length ? result.projects : personalProjects.map((p) => ({
         name: p.title || p.name || "",
         description: p.description || ""
       }))
     };
   },
-  async generateCoverLetter(anonymisedData) {
-    const apiKey = await getApiKey();
+  async generateCoverLetter(anonymisedData, trackUsage = true) {
     const prompt = `
-      You are a professional career coach.
-      Using the anonymised resume data provided, generate a professional cover letter.
+You are a professional career coach.
 
-      Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+Generate a professional cover letter using the anonymised resume data.
 
-      Rules:
-      - Suitable for Internships, Entry-level roles, or Graduate positions.
-      - Reflect ALL resume sections.
-      - Confident but humble tone.
-      - Remove or rewrite abusive, sensitive, or unsafe language into neutral professional phrasing.
-      - Length: 3\u20134 concise paragraphs.
+RULES:
+- Suitable for internships and entry-level roles.
+- Reflect ALL resume sections.
+- Confident but humble tone.
+- Length: 3\u20134 concise paragraphs.
+- Neutralize unsafe or sensitive language.
 
-      Output format:
-      Return a JSON object: {"content": "the cover letter text"} (no markdown, no code blocks).
-      The content should be plain text with proper paragraph breaks.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
-    const textContent = extractTextContent(response.data, "content");
-    return { content: textContent };
+OUTPUT:
+Return ONLY JSON:
+{ "content": "plain text cover letter" }
+
+DATA:
+${JSON.stringify(anonymisedData, null, 2)}
+`;
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
+    return {
+      content: extractTextContent(response.data, "content")
+    };
   },
-  async generateSOP(anonymisedData) {
-    const apiKey = await getApiKey();
+  async generateSOP(anonymisedData, trackUsage = true) {
     const prompt = `
-      You are an academic writing expert specializing in university admissions.
-      Using the anonymised candidate data provided, generate a formal Statement of Purpose (SOP).
+You are an academic writing expert.
 
-      Data:
-      ${JSON.stringify(anonymisedData, null, 2)}
+Generate a Statement of Purpose (600\u2013800 words).
 
-      Rules:
-      - Suitable for Undergraduate, Postgraduate, or International programs.
-      - Focus on Education, Academic interests, Personal projects, and Career goals.
-      - Formal academic tone (avoid corporate language).
-      - Do NOT invent research or credentials.
-      - Neutralize sensitive or inappropriate content.
-      - Length: 600\u2013800 words. Structured with logical paragraph flow.
+RULES:
+- Formal academic tone
+- Focus on education, projects, goals
+- DO NOT invent credentials
+- Neutralize sensitive language
 
-      Output format:
-      Return a JSON object: {"content": "the SOP text"} (no markdown, no code blocks).
-      The content should be plain text with proper paragraph breaks.
-    `;
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
-    const textContent = extractTextContent(response.data, "content");
-    return { content: textContent };
+OUTPUT:
+Return ONLY JSON:
+{ "content": "plain text SOP" }
+
+DATA:
+${JSON.stringify(anonymisedData, null, 2)}
+`;
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
+    return {
+      content: extractTextContent(response.data, "content")
+    };
   }
 };
 
 // src/controllers/resumeController.ts
-function transformResumeToUIFormat(data) {
-  const name = data.header?.name || "";
-  const contacts = data.header?.contacts || [];
-  const links = data.header?.links || [];
-  const summary = data.summary || "";
-  const skills = [
-    ...data.skills?.Frontend || [],
-    ...data.skills?.Backend || [],
-    ...data.skills?.Tools || []
-  ];
-  const work_experience = Array.isArray(data.experience) ? data.experience.map((exp) => ({
-    title: exp.role || "",
-    organization: exp.company || "",
-    duration: exp.duration || "",
-    highlights: Array.isArray(exp.description) ? exp.description : exp.description ? exp.description.split("\n") : []
-  })) : [];
-  const education = data.education || [];
-  const projects = data.projects || [];
-  const result = {
-    name,
-    summary,
-    contacts,
-    links,
-    skills,
-    work_experience,
-    education,
-    projects
-  };
-  return result;
-}
 var ResumeController = {
   async getResume(req, res) {
     try {
@@ -3371,64 +3426,29 @@ var ResumeController = {
   async generateATS(req, res) {
     try {
       const data = req.body;
-      await saveService.trackUsage("resumemaker", "api_hit", {
-        action: "generate_ats",
-        hasJobDescription: !!data.jobDescription,
-        industry: data.industry
-      });
       AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
-      const result = await agentOrchestrator.executeWorkflow(resumeMakerWorkflow, {
-        anonymisedData,
-        jobDescription: data.jobDescription,
-        industry: data.industry
-      });
-      let geminiResult = result.results.format;
-      if (!geminiResult) {
-        const lastResult = result.results.ats || result.results.grammar || result.results.draft;
-        if (!lastResult) {
-          const errorMessages = result.errors ? Object.entries(result.errors).map(([step, err]) => `${step}: ${err.message || String(err)}`).join(", ") : "Unknown error";
-          throw new Error(`Workflow failed - no results: ${errorMessages}`);
-        }
-        geminiResult = lastResult;
+      await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_ats" });
+      const result = await GeminiTransformService.generateATSResume(anonymisedData, false);
+      if ((!result.education || result.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
+        result.education = anonymisedData.education;
       }
-      AuditLogService.log("Resume workflow completed", "RESUME_ATS", false, "SUCCESS");
-      const uiFormattedResult = transformResumeToUIFormat(geminiResult);
-      console.log("Original anonymised data sections:", {
-        education: anonymisedData.education?.length || 0,
-        work_history: anonymisedData.work_history?.length || 0,
-        personal_projects: anonymisedData.personal_projects?.length || 0,
-        skills: anonymisedData.skills?.length || 0
-      });
-      console.log("AI result sections:", {
-        education: uiFormattedResult.education?.length || 0,
-        work_experience: uiFormattedResult.work_experience?.length || 0,
-        projects: uiFormattedResult.projects?.length || 0,
-        skills: uiFormattedResult.skills?.length || 0
-      });
-      if ((!uiFormattedResult.education || uiFormattedResult.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
-        console.log("Preserving original education data");
-        uiFormattedResult.education = anonymisedData.education;
-      }
-      if ((!uiFormattedResult.work_experience || uiFormattedResult.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
-        console.log("Preserving original work history data");
-        uiFormattedResult.work_experience = anonymisedData.work_history.map((exp) => ({
+      if ((!result.work_experience || result.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
+        result.work_experience = anonymisedData.work_history.map((exp) => ({
           title: exp.role || "",
           organization: exp.company || "",
           duration: exp.duration || "",
           highlights: Array.isArray(exp.description) ? exp.description : exp.description ? exp.description.split("\n") : []
         }));
       }
-      if ((!uiFormattedResult.projects || uiFormattedResult.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
-        console.log("Preserving original projects data");
-        uiFormattedResult.projects = anonymisedData.personal_projects;
+      if ((!result.projects || result.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
+        result.projects = anonymisedData.personal_projects;
       }
-      if ((!uiFormattedResult.skills || uiFormattedResult.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
-        console.log("Preserving original skills data");
-        uiFormattedResult.skills = anonymisedData.skills;
+      if ((!result.skills || result.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
+        result.skills = anonymisedData.skills;
       }
-      const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
+      const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
       AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_ats",
@@ -3438,42 +3458,41 @@ var ResumeController = {
       res.json(finalResult);
     } catch (error) {
       AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
+      await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_ats" });
       res.status(500).json({ error: error.message });
     }
   },
   async generateCoverLetter(req, res) {
     try {
       const data = req.body;
-      await saveService.trackUsage("resumemaker", "api_hit", {
-        action: "generate_cover_letter"
-      });
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
-      const geminiResult = await GeminiTransformService.generateCoverLetter(anonymisedData);
-      const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_cover_letter" });
+      const result = await GeminiTransformService.generateCoverLetter(anonymisedData, false);
+      const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_cover_letter"
       });
       res.json(finalResult);
     } catch (error) {
+      await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_cover_letter" });
       res.status(500).json({ error: error.message });
     }
   },
   async generateSOP(req, res) {
     try {
       const data = req.body;
-      await saveService.trackUsage("resumemaker", "api_hit", {
-        action: "generate_sop"
-      });
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
       AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
-      const geminiResult = await GeminiTransformService.generateSOP(anonymisedData);
-      const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+      await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_sop" });
+      const result = await GeminiTransformService.generateSOP(anonymisedData, false);
+      const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_sop"
       });
       res.json(finalResult);
     } catch (error) {
+      await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_sop" });
       res.status(500).json({ error: error.message });
     }
   }
@@ -3776,7 +3795,6 @@ router7.get("/metrics/all", async (req, res) => {
   console.log("\u{1F4CA} Metrics endpoint called");
   try {
     const metrics = await saveService.getUsageMetrics();
-    console.log("\u{1F4CA} Returning metrics:", metrics);
     return res.status(200).json({
       success: true,
       data: metrics
@@ -3951,8 +3969,419 @@ router7.delete("/:appName/:filename", async (req, res) => {
 });
 var persistenceRoutes_default = router7;
 
+// src/routes/apiKeysRoutes.ts
+var import_express8 = require("express");
+
+// ../../packages/shared/dist/ai-provider.config.js
+var AI_PROVIDERS = [
+  {
+    providerId: "gemini",
+    displayName: "Google Gemini",
+    tiers: [
+      {
+        tierId: "free",
+        displayName: "Free Tier",
+        models: [
+          {
+            modelId: "gemini-3-flash-preview",
+            modality: "text",
+            allowedApps: ["texteditor", "tripplanner", "resumemaker"],
+            isDefaultEligible: true
+          },
+          {
+            modelId: "gemini-2.5-flash",
+            modality: "text",
+            allowedApps: ["texteditor", "tripplanner", "resumemaker"],
+            isDefaultEligible: true
+          }
+        ]
+      },
+      {
+        tierId: "paid",
+        displayName: "Paid Tier",
+        models: [
+          {
+            modelId: "gemini-2.0-flash",
+            modality: "text",
+            allowedApps: ["texteditor", "tripplanner", "resumemaker"],
+            isDefaultEligible: true
+          },
+          {
+            modelId: "gemini-3-flash-preview",
+            modality: "text",
+            allowedApps: ["texteditor", "tripplanner", "resumemaker"],
+            isDefaultEligible: true
+          },
+          {
+            modelId: "gemini-3-flash-image",
+            modality: "image",
+            allowedApps: ["invitation"],
+            isDefaultEligible: true
+          },
+          {
+            modelId: "gemini-2.5-flash-image",
+            modality: "image",
+            allowedApps: ["invitation"],
+            isDefaultEligible: true
+          }
+        ]
+      }
+    ]
+  }
+];
+
+// src/ai/providers/gemini.adapter.ts
+var GeminiAdapter = class {
+  async validateApiKey(apiKey) {
+    try {
+      await unifiedProxy.execute({
+        model: "gemini-2.5-flash",
+        prompt: "test",
+        apiKey
+      });
+      return true;
+    } catch (e) {
+      console.warn("API Key validation failed:", e);
+      return false;
+    }
+  }
+  async executeText(apiKey, payload) {
+    const { model, prompt } = payload;
+    const response = await unifiedProxy.execute({
+      model: model || "gemini-2.5-flash",
+      // Fallback defaults
+      prompt,
+      apiKey
+    });
+    return { data: response.data };
+  }
+  async executeImage(apiKey, payload) {
+    const { model, prompt } = payload;
+    const response = await unifiedProxy.execute({
+      model: model || "gemini-2.5-flash-image",
+      // Fallback defaults
+      prompt,
+      apiKey
+    });
+    return response;
+  }
+};
+
+// src/ai/providers/provider-registry.ts
+var adapters = {
+  gemini: new GeminiAdapter()
+};
+var ProviderRegistry = class {
+  static getAdapter(providerId) {
+    const adapter = adapters[providerId];
+    if (!adapter) {
+      throw new Error(`Provider ${providerId} not supported`);
+    }
+    return adapter;
+  }
+  static getProviderConfig(providerId) {
+    return AI_PROVIDERS.find((p) => p.providerId === providerId);
+  }
+  static getTierConfig(providerId, tierId) {
+    const provider = this.getProviderConfig(providerId);
+    return provider?.tiers.find((t) => t.tierId === tierId);
+  }
+  static getModelConfig(providerId, tierId, modelId) {
+    const tier = this.getTierConfig(providerId, tierId);
+    return tier?.models.find((m) => m.modelId === modelId);
+  }
+};
+
+// src/controllers/apiKeysController.ts
+var ApiKeysController = {
+  getAll: async (_req, res) => {
+    try {
+      const rows = db.query(
+        "SELECT id, user_id as userId, provider, tier, is_active as isActive, is_default as isDefault, selected_text_model as selectedTextModel, selected_image_model as selectedImageModel, created_at as createdAt, updated_at as updatedAt FROM user_api_keys WHERE user_id = 1"
+      );
+      const safeRows = rows.map((row) => ({
+        ...row,
+        hasApiKey: true
+        // Just indicate that a key exists
+      }));
+      res.json({ success: true, data: safeRows });
+    } catch (error) {
+      console.error("[API_KEYS][GET_ALL]", error);
+      res.status(500).json({ success: false, error: "Failed to fetch API keys" });
+    }
+  },
+  create: async (req, res) => {
+    try {
+      const { provider, tier, apiKey, selectedTextModel, selectedImageModel } = req.body;
+      if (!provider || !tier || !apiKey) {
+        return res.status(400).json({ error: "Provider, tier, and API key are required" });
+      }
+      const adapter = ProviderRegistry.getAdapter(provider);
+      const isValid = await adapter.validateApiKey(apiKey);
+      if (!isValid) {
+        return res.status(400).json({ error: "Invalid API key" });
+      }
+      const tierConfig = ProviderRegistry.getTierConfig(provider, tier);
+      if (!tierConfig) {
+        return res.status(400).json({ error: "Invalid tier configuration" });
+      }
+      const encryptedKey = await encrypt(apiKey);
+      const rows = db.query(
+        "SELECT COUNT(*) as count FROM user_api_keys WHERE user_id = 1"
+      );
+      const isFirstKey = rows[0]?.count === 0;
+      await db.execute(
+        `INSERT INTO user_api_keys (user_id, provider, tier, encrypted_api_key, is_default, selected_text_model, selected_image_model)
+         VALUES (1, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, provider, tier) DO UPDATE SET
+         encrypted_api_key = excluded.encrypted_api_key,
+         selected_text_model = excluded.selected_text_model,
+         selected_image_model = excluded.selected_image_model,
+         updated_at = CURRENT_TIMESTAMP`,
+        [provider, tier, encryptedKey, isFirstKey ? 1 : 0, selectedTextModel, selectedImageModel]
+      );
+      res.status(201).json({ success: true, message: "API key saved successfully" });
+    } catch (error) {
+      console.error("[API_KEYS][CREATE]", error);
+      res.status(500).json({ error: "Failed to save API key" });
+    }
+  },
+  setDefault: async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.execute("UPDATE user_api_keys SET is_default = 0 WHERE user_id = 1");
+      await db.execute("UPDATE user_api_keys SET is_default = 1 WHERE id = ? AND user_id = 1", [id]);
+      res.json({ success: true, message: "Default API key updated" });
+    } catch (error) {
+      console.error("[API_KEYS][SET_DEFAULT]", error);
+      res.status(500).json({ error: "Failed to set default API key" });
+    }
+  },
+  toggleActive: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rows = db.query("SELECT is_active FROM user_api_keys WHERE id = ? AND user_id = 1", [id]);
+      if (rows.length === 0) {
+        return res.status(404).json({ error: "API key not found" });
+      }
+      const newStatus = rows[0].is_active === 1 ? 0 : 1;
+      await db.execute("UPDATE user_api_keys SET is_active = ? WHERE id = ? AND user_id = 1", [newStatus, id]);
+      res.json({ success: true, message: "API key status updated" });
+    } catch (error) {
+      console.error("[API_KEYS][TOGGLE_ACTIVE]", error);
+      res.status(500).json({ error: "Failed to toggle API key status" });
+    }
+  },
+  updateModels: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { selectedTextModel, selectedImageModel } = req.body;
+      await db.execute(
+        "UPDATE user_api_keys SET selected_text_model = ?, selected_image_model = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = 1",
+        [selectedTextModel, selectedImageModel, id]
+      );
+      res.json({ success: true, message: "Models updated successfully" });
+    } catch (error) {
+      console.error("[API_KEYS][UPDATE_MODELS]", error);
+      res.status(500).json({ error: "Failed to update models" });
+    }
+  },
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.execute("DELETE FROM user_api_keys WHERE id = ? AND user_id = 1", [id]);
+      res.json({ success: true, message: "API key deleted successfully" });
+    } catch (error) {
+      console.error("[API_KEYS][DELETE]", error);
+      res.status(500).json({ error: "Failed to delete API key" });
+    }
+  },
+  getProviders: async (_req, res) => {
+    try {
+      res.json({ success: true, data: AI_PROVIDERS });
+    } catch (error) {
+      console.error("[API_KEYS][GET_PROVIDERS]", error);
+      res.status(500).json({ error: "Failed to fetch providers" });
+    }
+  }
+};
+
+// src/routes/apiKeysRoutes.ts
+var router8 = (0, import_express8.Router)();
+router8.get("/", ApiKeysController.getAll);
+router8.post("/", ApiKeysController.create);
+router8.put("/:id/default", ApiKeysController.setDefault);
+router8.put("/:id/toggle", ApiKeysController.toggleActive);
+router8.put("/:id/models", ApiKeysController.updateModels);
+router8.delete("/:id", ApiKeysController.delete);
+router8.get("/providers", ApiKeysController.getProviders);
+var apiKeysRoutes_default = router8;
+
+// src/routes/aiRoutes.ts
+var import_express9 = require("express");
+
+// src/controllers/aiProxyController.ts
+var AiProxyController = {
+  execute: async (req, res) => {
+    try {
+      const { appId, modality, payload, model } = req.body;
+      if (!appId || !modality || !payload) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing required fields: appId, modality, payload"
+        });
+      }
+      const result = await AiProxyService.execute({
+        appId,
+        modality,
+        payload,
+        model
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error("[AI_PROXY][EXECUTE]", error);
+      if (error.message.includes("Invalid") && error.message.includes("key")) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid API key. Please check your API key in Profile settings."
+        });
+      }
+      if (error.message.includes("quota") || error.message.includes("limit")) {
+        return res.status(429).json({
+          success: false,
+          error: "API quota exceeded. Please try again later."
+        });
+      }
+      if (error.message.includes("timeout")) {
+        return res.status(408).json({
+          success: false,
+          error: "Request timeout. Please try again."
+        });
+      }
+      if (error.message.includes("Unsupported model")) {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+      res.status(500).json({
+        success: false,
+        error: "AI service temporarily unavailable. Please try again."
+      });
+    }
+  },
+  listModels: async (_req, res) => {
+    try {
+      const models = await AiProxyService.listModels();
+      res.json({ success: true, data: models });
+    } catch (error) {
+      console.error("[AI_PROXY][LIST_MODELS]", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to list available models"
+      });
+    }
+  }
+};
+
+// src/routes/aiRoutes.ts
+var router9 = (0, import_express9.Router)();
+router9.post("/proxy", AiProxyController.execute);
+router9.get("/models", AiProxyController.listModels);
+var aiRoutes_default = router9;
+
+// src/routes/unlockRoutes.ts
+var import_express10 = require("express");
+
+// src/controllers/unlockController.ts
+var UnlockController = {
+  getStatus: async (_req, res) => {
+    try {
+      let acceptedAgreement = false;
+      try {
+        const userRows = db.query("SELECT personalAgreement FROM users WHERE id = 1");
+        if (userRows.length === 0) {
+          acceptedAgreement = false;
+        } else {
+          acceptedAgreement = Boolean(userRows[0]?.personalAgreement);
+        }
+      } catch (dbError) {
+        console.error("[UNLOCK][DB_ERROR]", dbError);
+        acceptedAgreement = true;
+      }
+      let hasActiveApiKey = false;
+      let lockedApps = [];
+      try {
+        const apiKeyRows = db.query(
+          `SELECT provider, tier, selected_text_model, selected_image_model 
+           FROM user_api_keys 
+           WHERE user_id = 1 AND is_active = 1 
+           ORDER BY is_default DESC 
+           LIMIT 1`
+        );
+        if (apiKeyRows.length > 0) {
+          hasActiveApiKey = true;
+          const key = apiKeyRows[0];
+          const unlockedApps = /* @__PURE__ */ new Set();
+          unlockedApps.add("profile");
+          const providerConfig = AI_PROVIDERS.find((p) => p.providerId === key.provider);
+          if (providerConfig) {
+            const tierConfig = providerConfig.tiers.find((t) => t.tierId === key.tier);
+            if (tierConfig) {
+              if (key.selected_text_model) {
+                const textModel = tierConfig.models.find((m) => m.modelId === key.selected_text_model);
+                if (textModel) {
+                  textModel.allowedApps.forEach((app) => unlockedApps.add(app));
+                }
+              }
+              if (key.selected_image_model) {
+                const imageModel = tierConfig.models.find((m) => m.modelId === key.selected_image_model);
+                if (imageModel) {
+                  imageModel.allowedApps.forEach((app) => unlockedApps.add(app));
+                }
+              }
+            }
+          }
+          const allKnownApps = ["texteditor", "tripplanner", "resumemaker", "invitation"];
+          lockedApps = allKnownApps.filter((app) => !unlockedApps.has(app));
+        } else {
+          lockedApps = ["texteditor", "tripplanner", "resumemaker", "invitation"];
+        }
+      } catch (dbError) {
+        console.error("[UNLOCK][API_KEY_CHECK_ERROR]", dbError);
+        hasActiveApiKey = false;
+        lockedApps = ["texteditor", "tripplanner", "resumemaker", "invitation"];
+      }
+      const unlocked = hasActiveApiKey && acceptedAgreement;
+      const status = {
+        hasActiveApiKey,
+        acceptedAgreement,
+        unlocked,
+        lockedApps: unlocked ? lockedApps : ["texteditor", "tripplanner", "resumemaker", "invitation"]
+        // If not unlocked globally, lock everything
+      };
+      res.json({ success: true, data: status });
+    } catch (error) {
+      console.error("[UNLOCK][GET_STATUS]", error);
+      const fallbackStatus = {
+        hasActiveApiKey: false,
+        acceptedAgreement: true,
+        // Allow access to profile to configure
+        unlocked: false,
+        lockedApps: ["texteditor", "tripplanner", "resumemaker", "invitation"]
+      };
+      res.json({ success: true, data: fallbackStatus });
+    }
+  }
+};
+
+// src/routes/unlockRoutes.ts
+var router10 = (0, import_express10.Router)();
+router10.get("/status", UnlockController.getStatus);
+var unlockRoutes_default = router10;
+
 // src/routes/index.ts
-var apiRouter = (0, import_express8.Router)();
+var apiRouter = (0, import_express11.Router)();
 console.log("\u{1F527} All route modules imported");
 console.log("\u{1F527} Mounting routes...");
 apiRouter.use("/activate", activateRoutes_default);
@@ -3962,6 +4391,9 @@ apiRouter.use("/invitation", invitationRoutes_default);
 apiRouter.use("/user", user_routes_default);
 apiRouter.use("/resume", resumeRoutes_default);
 apiRouter.use("/persistence", persistenceRoutes_default);
+apiRouter.use("/api-keys", apiKeysRoutes_default);
+apiRouter.use("/ai", aiRoutes_default);
+apiRouter.use("/unlock", unlockRoutes_default);
 console.log("\u2705 All routes mounted");
 
 // src/agents/trip.plan.agent.ts
@@ -4071,11 +4503,19 @@ var RouteAgent = {
       endLocation,
       tripType
     });
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "tripplanner",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     const tripData = parseAIJSON(response.data);
     return {
       ...tripData,
+      peopleCount: input.peopleCount,
+      startLocation: input.startLocation,
+      endLocation: input.endLocation,
+      tripType: input.tripType,
       routeOptimization: {
         originalOrder: places,
         optimizedOrder: optimizedPlaces,
@@ -4093,6 +4533,7 @@ var CostAgent = {
   execute: async (input, context) => {
     const { itinerary, peopleCount } = input;
     const actualPeopleCount = typeof peopleCount === "number" && peopleCount > 0 ? peopleCount : 1;
+    console.log("Actual People Count", actualPeopleCount);
     if (!Array.isArray(itinerary)) {
       return input;
     }
@@ -4104,6 +4545,7 @@ var CostAgent = {
       totalTripCost: 0,
       costPerPerson: 0
     };
+    console.log("Cost Breakdown", costBreakdown);
     for (const day of itinerary) {
       if (day.travel?.from && day.travel?.to) {
         const distanceResult = await mcpServer.executeTool("geocoding", {
@@ -4246,6 +4688,165 @@ var LocalizationAgent = {
   }
 };
 
+// src/agents/trip/validatorAgent.ts
+var ValidatorAgent = {
+  id: "trip-validator-agent",
+  name: "Itinerary Validation Agent",
+  description: "Detects, corrects, and normalizes the itinerary for logical consistency and cost integrity",
+  execute: async (input, context) => {
+    const {
+      tripType,
+      startLocation,
+      endLocation,
+      peopleCount,
+      itinerary,
+      summary
+    } = input;
+    if (!Array.isArray(itinerary)) {
+      return {
+        ...input,
+        validationNotes: ["Invalid itinerary format: Expected an array"]
+      };
+    }
+    const validationNotes = [];
+    const correctedItinerary = JSON.parse(JSON.stringify(itinerary));
+    const correctedSummary = summary ? { ...summary } : {};
+    const actualPeopleCount = Math.max(1, Number(peopleCount) || 1);
+    if (tripType === "roundtrip") {
+      if (correctedSummary.endPoint !== startLocation) {
+        correctedSummary.endPoint = startLocation;
+        validationNotes.push("Roundtrip endPoint normalized to startLocation");
+      }
+      const lastDay = correctedItinerary[correctedItinerary.length - 1];
+      const travelsToStart = lastDay?.travel?.to?.toLowerCase() === startLocation.toLowerCase();
+      if (!travelsToStart && correctedItinerary.length > 0) {
+        if (lastDay.travel) {
+          lastDay.travel.to = startLocation;
+          validationNotes.push("Roundtrip return leg added/corrected on final day");
+        }
+      }
+      if (lastDay && (!lastDay.stay || lastDay.stay.type !== "NA")) {
+        if (!lastDay.stay) lastDay.stay = {};
+        lastDay.stay.type = "NA";
+        lastDay.stay.cost = 0;
+        validationNotes.push("Hotel stay removed from final return day");
+      }
+    } else if (tripType === "oneway") {
+      if (endLocation && correctedSummary.endPoint !== endLocation) {
+        correctedSummary.endPoint = endLocation;
+        validationNotes.push("Oneway endPoint normalized to endLocation");
+      }
+      const lastDay = correctedItinerary[correctedItinerary.length - 1];
+      if (lastDay?.travel?.to?.toLowerCase() === startLocation.toLowerCase()) {
+        lastDay.travel.to = endLocation || lastDay.city;
+        validationNotes.push("Removed unintended return travel in oneway trip");
+      }
+    }
+    let lastCity = startLocation;
+    for (let i = 0; i < correctedItinerary.length; i++) {
+      const day = correctedItinerary[i];
+      if (day.travel) {
+        if (day.travel.from?.toLowerCase() !== lastCity.toLowerCase()) {
+          day.travel.from = lastCity;
+          validationNotes.push(`Day ${i + 1}: Adjusted travel departure to match previous location`);
+        }
+        lastCity = day.travel.to || day.city;
+      } else {
+        lastCity = day.city;
+      }
+      if (day.travel && !day.activities?.length && day.travel.to !== day.city) {
+        if (day.stay) {
+          day.stay.type = "NA";
+          day.stay.cost = 0;
+          validationNotes.push(`Day ${i + 1}: Normalized stay for travel-only day`);
+        }
+      }
+    }
+    let totalTripCost = 0;
+    let totalInterCity = 0;
+    let totalStay = 0;
+    let totalFood = 0;
+    correctedItinerary.forEach((day, index) => {
+      const travelCost = Number(day.travel?.cost) || 0;
+      const stayCost = Number(day.stay?.cost) || 0;
+      const foodCost = Number(day.food?.cost) || 0;
+      const calculatedDailyTotal = travelCost + stayCost + foodCost;
+      if (day.dailyTotalCost !== calculatedDailyTotal) {
+        day.dailyTotalCost = calculatedDailyTotal;
+        if (!validationNotes.includes("Daily total costs recalculated for consistency")) {
+          validationNotes.push("Daily total costs recalculated for consistency");
+        }
+      }
+      totalTripCost += calculatedDailyTotal;
+      totalInterCity += travelCost;
+      totalStay += stayCost;
+      totalFood += foodCost;
+    });
+    const calculatedCostPerPerson = Math.round(totalTripCost / actualPeopleCount * 100) / 100;
+    const updateCosts = (obj) => {
+      if (!obj) return;
+      if (obj.totalTripCost !== void 0) obj.totalTripCost = totalTripCost;
+      if (obj.costPerPerson !== void 0) obj.costPerPerson = calculatedCostPerPerson;
+      if (obj.interCityTravel !== void 0) obj.interCityTravel = totalInterCity;
+      if (obj.stay !== void 0) obj.stay = totalStay;
+      if (obj.food !== void 0) obj.food = totalFood;
+    };
+    updateCosts(correctedSummary);
+    if (input.costBreakdown) {
+      updateCosts(input.costBreakdown);
+    }
+    if (correctedSummary.costPerPerson !== calculatedCostPerPerson) {
+      validationNotes.push("Cost per person recalculated (Total / PeopleCount)");
+    }
+    if (correctedSummary.totalDistance) {
+      if (correctedSummary.totalDistance > 3e3) {
+        correctedSummary.totalDistance = Math.max(150, Math.round(correctedSummary.totalDistance / 10));
+        validationNotes.push("Total distance corrected for realism");
+      }
+    }
+    if (correctedSummary.routeOptimization) {
+      const { originalOrder, optimizedOrder } = correctedSummary.routeOptimization;
+      if (Array.isArray(originalOrder) && Array.isArray(optimizedOrder)) {
+        const isTrivial = JSON.stringify(originalOrder) === JSON.stringify(optimizedOrder);
+        if (isTrivial) {
+          correctedSummary.routeOptimized = false;
+        }
+        const originalSet = new Set(originalOrder.map((s) => s.toLowerCase()));
+        const hasExtraCities = optimizedOrder.some((city) => !originalSet.has(city.toLowerCase()));
+        if (hasExtraCities) {
+          correctedSummary.routeOptimization.optimizedOrder = optimizedOrder.filter((city) => originalSet.has(city.toLowerCase()));
+          validationNotes.push("Removed non-input cities from optimized route");
+        }
+      }
+    }
+    correctedSummary.localization = {
+      languages: "Hindi (primary), English (secondary)",
+      culturalTips: correctedSummary.culturalTips || []
+    };
+    if (Array.isArray(correctedSummary.culturalTips)) {
+      const originalCount = correctedSummary.culturalTips.length;
+      correctedSummary.culturalTips = [...new Set(correctedSummary.culturalTips)];
+      if (correctedSummary.culturalTips.length !== originalCount) {
+        validationNotes.push("Duplicate cultural tips removed");
+      }
+    }
+    correctedItinerary.forEach((day, i) => {
+      if (day.weather && day.date && day.weather.date !== day.date) {
+        day.weather.date = day.date;
+        if (!validationNotes.includes("Weather dates aligned with itinerary days")) {
+          validationNotes.push("Weather dates aligned with itinerary days");
+        }
+      }
+    });
+    return {
+      ...input,
+      summary: correctedSummary,
+      itinerary: correctedItinerary,
+      validationNotes
+    };
+  }
+};
+
 // src/agents/resume/resumeAgent.ts
 var ResumeAgent = {
   id: "resume-main-agent",
@@ -4284,8 +4885,12 @@ ${resumeText}
 Return the corrected resume in the same JSON structure, with all grammar and style issues fixed.
 Return ONLY valid JSON, no markdown.
     `;
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     const { parseAIJSON: parseAIJSON2 } = await Promise.resolve().then(() => (init_jsonParser(), jsonParser_exports));
     const corrected = parseAIJSON2(response.data);
     const originalResume = input.resume || input;
@@ -4382,8 +4987,12 @@ Instructions:
 Return the optimized resume in the same JSON structure.
 Return ONLY valid JSON, no markdown.
     `;
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "resumemaker",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     const optimizedResume = parseAIJSON(response.data);
     const originalResume = resume;
     const result = {
@@ -4556,57 +5165,58 @@ Follow these rules:
 - Preserve meaning unless asked to change
 - Be concise and professional for business, but creative for literature
 - No emojis
+- STRICT OUTPUT RULE: Return ONLY plain text. Do NOT use markdown (bold, italics, headers) or any formatting.
 `;
   switch (intent) {
     case "grammar":
       return `
 ${baseSystem}
-Task: Fix grammar and clarity without changing meaning.
+  Task: Fix grammar and clarity without changing meaning.
 
-Text:
+    Text:
 ${text}
-`;
+  `;
     case "rewrite":
       return `
 ${baseSystem}
-Task: Rewrite the text.
-Tone: ${tone ?? "neutral"}
+  Task: Rewrite the text.
+    Tone: ${tone ?? "neutral"}
 
-Text:
+  Text:
 ${text}
-`;
+  `;
     case "autocomplete":
       return `
 ${baseSystem}
-Task: Complete the unfinished sentence naturally.
+  Task: Complete the unfinished sentence naturally.
 
-Text:
+    Text:
 ${text}
-`;
+  `;
     case "continue":
       return `
 ${baseSystem}
-Task: Continue the writing based on the context. If there is a specific 'Instruction', follow it strictly.
+  Task: Continue the writing based on the context.If there is a specific 'Instruction', follow it strictly.
 
 Content Context:
 ${text}
-`;
+  `;
     case "translate":
       return `
 ${baseSystem}
-Task: Translate the text into ${language}.
+  Task: Translate the text into ${language}.
 
-Text:
+  Text:
 ${text}
-`;
+  `;
     case "summarize":
       return `
 ${baseSystem}
-Task: Summarize clearly.
+  Task: Summarize clearly.
 
-Text:
+    Text:
 ${text}
-`;
+  `;
     default:
       throw new Error("Unknown Likhit intent");
   }
@@ -4618,10 +5228,14 @@ var TextEditorAgent = {
   name: "Text Editor Agent",
   description: "Main text editing agent that handles various text operations",
   execute: async (input, context) => {
-    const { intent, text, language, tone } = input;
+    const { intent, text, language, tone, trackUsage } = input;
     const prompt = buildTextEditorPrompt({ intent, text, language, tone });
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "texteditor",
+      modality: "text",
+      payload: { prompt },
+      trackUsage
+    });
     return response.data;
   }
 };
@@ -4642,8 +5256,12 @@ var TextGrammarAgent = {
       language: input.language,
       tone: input.tone
     });
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "texteditor",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     return response.data;
   }
 };
@@ -4680,9 +5298,14 @@ Text to improve:
 ${text}
 
 Return the improved text following the style guide.
+Return ONLY plain text. Do NOT use markdown formatting (bold, italics, etc).
     `;
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "texteditor",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     return response.data;
   }
 };
@@ -4716,9 +5339,14 @@ Text to adjust:
 ${text}
 
 Return the text adjusted to match the ${tone} tone.
+Return ONLY plain text. Do NOT use markdown formatting (bold, italics, etc).
     `;
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: "texteditor",
+      modality: "text",
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     return response.data;
   }
 };
@@ -4901,8 +5529,12 @@ Design Context:
 Follow these design guidelines:
 ${designTemplates.recommendations.join("\n")}
     `;
-    const apiKey = await getApiKey();
-    const response = await callGeminiImageWithUserPreference(apiKey, enhancedPrompt);
+    const response = await AiProxyService.execute({
+      appId: "invitation",
+      modality: "image",
+      payload: { prompt: enhancedPrompt },
+      trackUsage: input.trackUsage
+    });
     return {
       ...response,
       designContext: {
@@ -4994,6 +5626,7 @@ function registerAllAgents() {
   agentRegistry.register(CostAgent);
   agentRegistry.register(WeatherAgent);
   agentRegistry.register(LocalizationAgent);
+  agentRegistry.register(ValidatorAgent);
   agentRegistry.register(ResumeAgent);
   agentRegistry.register(GrammarAgent);
   agentRegistry.register(ATSScoringAgent);
@@ -5018,12 +5651,17 @@ async function startServer() {
     console.log("\u23F3 Registering agents...");
     registerAllAgents();
     console.log("\u2705 Agents registered");
-    const app = (0, import_express9.default)();
+    const app = (0, import_express12.default)();
     app.use((0, import_cors.default)());
-    app.use(import_express9.default.json());
+    app.use(import_express12.default.json({ limit: "10mb" }));
+    app.use(import_express12.default.urlencoded({ extended: true, limit: "10mb" }));
     app.use((req, res, next) => {
       console.log(`\u{1F310} ${req.method} ${req.url}`);
       next();
+    });
+    app.use((err, req, res, next) => {
+      console.error("Server error:", err);
+      res.status(500).json({ error: "Internal server error" });
     });
     app.use("/api/v1", apiRouter);
     app.get("/api/v1/test", (req, res) => {
@@ -5031,19 +5669,35 @@ async function startServer() {
       res.json({ success: true, message: "Server is running", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
     });
     app.get("/health", (_req, res) => {
-      res.json({
-        status: "ok",
-        timestamp: (/* @__PURE__ */ new Date()).toISOString()
-      });
+      try {
+        const testQuery = db.query("SELECT 1 as test");
+        res.json({
+          status: "ok",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          database: testQuery.length > 0 ? "connected" : "disconnected"
+        });
+      } catch (error) {
+        console.error("Health check failed:", error);
+        res.status(500).json({
+          status: "error",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          error: "Database connection failed"
+        });
+      }
     });
     const publicPath = process.env.WEB_DIST_PATH || import_path3.default.join(SERVER_DIR, "../web");
     console.log(`\u{1F4C2} Serving frontend from: ${publicPath}`);
-    app.use(import_express9.default.static(publicPath));
+    app.use(import_express12.default.static(publicPath));
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API route not found" });
       }
-      res.sendFile(import_path3.default.join(publicPath, "index.html"));
+      const indexPath = import_path3.default.join(publicPath, "index.html");
+      if (import_fs3.default.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Frontend not found");
+      }
     });
     const PORT = Number(process.env.PORT) || 0;
     const server = app.listen(PORT, () => {

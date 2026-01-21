@@ -4,8 +4,7 @@
 
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { buildTextEditorPrompt } from '../text.editor.agent.js';
 
 export const TextGrammarAgent: Agent = {
@@ -27,8 +26,12 @@ export const TextGrammarAgent: Agent = {
       tone: input.tone
     });
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: 'texteditor',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
 
     return response.data;
   }

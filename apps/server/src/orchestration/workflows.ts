@@ -18,6 +18,7 @@ export const tripPlannerWorkflow: Workflow = {
       input: (results: Record<string, any>) => {
         // Support both { data: {...} } and direct data structure
         const inputData = results.initial?.data || results.initial || {};
+        console.log("Input Data", inputData);
         return {
           places: inputData.places,
           startLocation: inputData.startLocation,
@@ -33,22 +34,44 @@ export const tripPlannerWorkflow: Workflow = {
     {
       id: 'cost',
       agentId: 'trip-cost-agent',
-      input: (results: Record<string, any>) => results.route,
+      input: (results: Record<string, any>) => ({
+        ...results.route,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ['route'],
       timeout: 30000
     },
     {
       id: 'weather',
       agentId: 'trip-weather-agent',
-      input: (results: Record<string, any>) => results.cost,
+      input: (results: Record<string, any>) => ({
+        ...results.cost,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ['cost'],
       timeout: 30000
     },
     {
       id: 'localization',
       agentId: 'trip-localization-agent',
-      input: (results: Record<string, any>) => results.weather,
+      input: (results: Record<string, any>) => ({
+        ...results.weather,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1
+      }),
       dependsOn: ['weather'],
+      timeout: 30000
+    },
+    {
+      id: 'validator',
+      agentId: 'trip-validator-agent',
+      input: (results: Record<string, any>) => ({
+        ...results.localization,
+        peopleCount: results.route?.peopleCount || results.initial?.data?.peopleCount || 1,
+        startLocation: results.route?.startLocation,
+        endLocation: results.route?.endLocation,
+        tripType: results.route?.tripType
+      }),
+      dependsOn: ['localization'],
       timeout: 30000
     }
   ],

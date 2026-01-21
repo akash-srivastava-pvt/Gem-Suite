@@ -1,4 +1,3 @@
-import { getApiKey } from "../utility/helper.js";
 import { Request, Response } from "express";
 import { LoggerModel } from "../models/loggerModel.js";
 import { agentOrchestrator } from "../orchestration/agentOrchestrator.js";
@@ -17,76 +16,70 @@ export async function TextEditorController(req: Request, res: Response) {
 
     const { intent, text, language, tone, style } = data;
 
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      throw new Error("Gemini API key missing");
-    }
+    LoggerModel.log(`Starting text editor request: ${intent}`);
 
-    // Track API usage
-    await saveService.trackUsage('texteditor', 'api_hit', {
-      intent,
-      textLength: text.length,
-      language,
-      tone,
-      style
-    });
+    // Track the unique flow API hit
+    await saveService.trackUsage('texteditor', 'api_hit', { intent });
 
-    // For simple intents, use direct agent call
-    // For complex operations, use workflow
-    const complexIntents = ['rewrite', 'continue'];
-    const useWorkflow = complexIntents.includes(intent) && (style || tone);
+    let finalResult: string;
 
-    if (useWorkflow) {
-      LoggerModel.log(`Using workflow for text editing: ${intent}`);
-      
+    // Simple intents should NOT run the full multi-step workflow 
+    // to avoid mangling the output or tracking duplicate AI calls.
+    const isSimpleIntent = ['translate', 'summarize', 'grammar', 'rewrite', 'autocomplete', 'continue'].includes(intent);
+
+    if (isSimpleIntent) {
+      LoggerModel.log(`Executing simple intent: ${intent}`);
+      finalResult = await agentOrchestrator.callAgent('text-editor-main-agent', {
+        intent,
+        text,
+        language: language || 'english',
+        tone: tone || 'professional',
+        trackUsage: false // Disable internal tracking in AiProxy
+      });
+    } else {
+      // Execute the full workflow for complex/combined operations
       const result = await agentOrchestrator.executeWorkflow(textEditorWorkflow, {
         intent,
         text,
-        language,
-        tone,
-        style
+        language: language || 'english',
+        tone: tone || 'professional',
+        style: style || 'business',
+        trackUsage: false // Pass to all steps
       });
 
       if (!result.success) {
-        throw new Error(`Workflow failed: ${JSON.stringify(result.errors)}`);
+        console.error('Text editor workflow errors:', result.errors);
+        return res.status(500).json({
+          success: false,
+          error: 'Text editing workflow failed',
+          details: result.errors
+        });
       }
 
-      const finalResult = result.results.tone || result.results.style || result.results.grammar || result.results.edit;
-      LoggerModel.log(`Text editing workflow completed: ${intent}`);
+      const workflowResults = result.results || {};
+      finalResult = workflowResults.tone || workflowResults.style || workflowResults.grammar || workflowResults.edit;
+    }
 
-      // Track generation event
-      await saveService.trackUsage('texteditor', 'generate', {
-        intent,
-        workflow: true
-      });
-
-      return res.status(200).json({
-        success: true,
-        data: finalResult,
-      });
-    } else {
-      // Simple operation - use direct agent
-      LoggerModel.log(`Using direct agent for text editing: ${intent}`);
-      const result = await agentOrchestrator.callAgent('text-editor-main-agent', {
-        intent,
-        text,
-        language,
-        tone
-      });
-
-      // Track generation event
-      await saveService.trackUsage('texteditor', 'generate', {
-        intent,
-        workflow: false
-      });
-
-      return res.status(200).json({
-        success: true,
-        data: result,
+    // Ensure we have a result
+    if (!finalResult) {
+      return res.status(500).json({
+        success: false,
+        error: 'Text editing completed but produced no results'
       });
     }
+
+    // Track the unique flow completion
+    await saveService.trackUsage('texteditor', 'generate', { intent });
+
+    LoggerModel.log(`Text editing completed: ${intent}`);
+
+    return res.status(200).json({
+      success: true,
+      data: finalResult,
+    });
   } catch (err: any) {
     console.error("TextEditorController error:", err);
+    await saveService.trackUsage('texteditor', 'api_error', { error: err.message, intent: req.body?.data?.intent });
     return res.status(500).json({
       success: false,
       error: err.message,

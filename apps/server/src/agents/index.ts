@@ -9,6 +9,7 @@ import { RouteAgent } from './trip/routeAgent.js';
 import { CostAgent } from './trip/costAgent.js';
 import { WeatherAgent } from './trip/weatherAgent.js';
 import { LocalizationAgent } from './trip/localizationAgent.js';
+import { ValidatorAgent } from './trip/validatorAgent.js';
 
 // Resume Maker Agents
 import { ResumeAgent } from './resume/resumeAgent.js';
@@ -36,6 +37,7 @@ export function registerAllAgents() {
   agentRegistry.register(CostAgent);
   agentRegistry.register(WeatherAgent);
   agentRegistry.register(LocalizationAgent);
+  agentRegistry.register(ValidatorAgent);
 
   // Resume Maker Agents
   agentRegistry.register(ResumeAgent);
@@ -62,19 +64,20 @@ export {
   CostAgent,
   WeatherAgent,
   LocalizationAgent,
-  
+  ValidatorAgent,
+
   // Resume Maker
   ResumeAgent,
   GrammarAgent,
   ATSScoringAgent,
   FormattingAgent,
-  
+
   // Text Editor
   TextEditorAgent,
   TextGrammarAgent,
   StyleAgent,
   ToneAgent,
-  
+
   // Invitation Maker
   DesignAgent,
   InvitationLocalizationAgent,

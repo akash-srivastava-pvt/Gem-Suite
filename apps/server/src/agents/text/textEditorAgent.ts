@@ -3,8 +3,7 @@
  */
 
 import { Agent } from '../../orchestration/types.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { buildTextEditorPrompt } from '../text.editor.agent.js';
 
 export const TextEditorAgent: Agent = {
@@ -12,11 +11,15 @@ export const TextEditorAgent: Agent = {
   name: 'Text Editor Agent',
   description: 'Main text editing agent that handles various text operations',
   execute: async (input: any, context?: any) => {
-    const { intent, text, language, tone } = input;
+    const { intent, text, language, tone, trackUsage } = input;
 
     const prompt = buildTextEditorPrompt({ intent, text, language, tone });
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: 'texteditor',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage
+    });
 
     return response.data;
   }

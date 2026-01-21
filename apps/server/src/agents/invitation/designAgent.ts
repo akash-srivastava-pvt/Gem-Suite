@@ -4,8 +4,7 @@
 
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
-import { callGeminiImageWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { buildInvitationPrompt } from '../wedding.invitation.agent.js';
 import { buildEventInvitationPrompt } from '../event.invitation.agent.js';
 import { buildGreetingInvitationPrompt } from '../greeting.invitation.agent.js';
@@ -38,8 +37,9 @@ export const DesignAgent: Agent = {
     const basePrompt = theme === 'event'
       ? buildEventInvitationPrompt(data)
       : theme === 'greetings'
-      ? buildGreetingInvitationPrompt(data)
-      : buildInvitationPrompt(data);
+        ? buildGreetingInvitationPrompt(data)
+        : buildInvitationPrompt(data);
+
     const enhancedPrompt = `
 ${basePrompt}
 
@@ -54,8 +54,12 @@ Follow these design guidelines:
 ${designTemplates.recommendations.join('\n')}
     `;
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiImageWithUserPreference(apiKey, enhancedPrompt);
+    const response = await AiProxyService.execute({
+      appId: 'invitation',
+      modality: 'image',
+      payload: { prompt: enhancedPrompt },
+      trackUsage: input.trackUsage
+    });
 
     return {
       ...response,
@@ -67,4 +71,3 @@ ${designTemplates.recommendations.join('\n')}
     };
   }
 };
-

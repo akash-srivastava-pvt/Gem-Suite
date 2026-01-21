@@ -193,7 +193,7 @@ class PersistenceService {
    */
   async getUsageMetrics(): Promise<UsageMetrics[]> {
     try {
-        const response = await fetch(`${API_BASE}/metrics/all`);
+      const response = await fetch(`${API_BASE}/metrics/all`);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -376,7 +376,8 @@ class PersistenceService {
           appName,
           apiHits: usageData.apiHits,
           savedArtifacts,
-          generatedArtifacts: usageData.generatedArtifacts
+          generatedArtifacts: usageData.generatedArtifacts,
+          apiErrors: 0
         });
       } catch (error) {
         console.error(`Error calculating local metrics for ${appName}:`, error);
@@ -384,7 +385,8 @@ class PersistenceService {
           appName,
           apiHits: 0,
           savedArtifacts: 0,
-          generatedArtifacts: 0
+          generatedArtifacts: 0,
+          apiErrors: 0
         });
       }
     });

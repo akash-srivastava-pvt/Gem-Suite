@@ -89,17 +89,81 @@ class DatabaseModel {
         console.log(`Loading existing database from: ${this.dbPath}`);
         const diskBuffer = fs.readFileSync(this.dbPath);
         this.db = new SQL.Database(diskBuffer);
-        
-        // Migration: Add geminiVersion column if it doesn't exist
+
+
+
         try {
-          this.db.run(`ALTER TABLE users ADD COLUMN geminiVersion TEXT DEFAULT '2'`);
-          console.log('✅ Added geminiVersion column to users table');
+          this.db.run(`CREATE TABLE IF NOT EXISTS user_api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            provider TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            encrypted_api_key TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            is_default BOOLEAN DEFAULT 0,
+            selected_text_model TEXT,
+            selected_image_model TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, provider, tier),
+            CHECK(is_default IN (0, 1)),
+            CHECK(is_active IN (0, 1))
+          )`);
+
+          this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_default_key ON user_api_keys(user_id) WHERE is_default = 1`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
+
+          // Ensure saved_artifacts exists
+          this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            data TEXT NOT NULL,
+            data_type TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            metadata TEXT,
+            UNIQUE(app_name, filename)
+          )`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_app_name ON saved_artifacts(app_name)`);
+
+          // Ensure usage_metrics exists
+          this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            metadata TEXT
+          )`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
+
+          console.log('✅ Secondary tables and indexes verified/created');
+
+          // Migration: Move existing API key from activate table (one-time only)
+          const existingActivate = this.query<{ apiKey: string }>('SELECT apiKey FROM activate WHERE id = 1');
+          if (existingActivate.length > 0) {
+            const apiKey = existingActivate[0].apiKey;
+            const existingApiKeys = this.query<{ count: number }>('SELECT COUNT(*) as count FROM user_api_keys WHERE user_id = 1');
+
+            if (existingApiKeys[0]?.count === 0) {
+              // Import as unencrypted for backward compatibility
+              this.execute(
+                `INSERT INTO user_api_keys (user_id, provider, tier, encrypted_api_key, is_active, is_default, selected_text_model, selected_image_model)
+                 VALUES (1, 'gemini', 'free', ?, 1, 1, 'gemini-2-flash', 'gemini-2-imagen')`,
+                [apiKey]
+              );
+              console.log('✅ Migrated existing API key to new system (unencrypted for compatibility)');
+
+              // Drop the old table after successful migration
+              this.db.run('DROP TABLE IF EXISTS activate');
+              console.log('✅ Removed legacy activate table');
+            }
+          }
+
           this.saveToDisk();
         } catch (err: any) {
-          // Column already exists, ignore error
-          if (!err.message?.includes('duplicate column')) {
-            console.warn('Migration note:', err.message);
-          }
+          console.warn('DB initialization migration note:', err.message);
         }
       } else {
         console.log(`Creating new database at: ${this.dbPath}`);
@@ -108,14 +172,7 @@ class DatabaseModel {
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY, 
           name TEXT,
-          personalAgreement BOOLEAN,
-          geminiVersion TEXT DEFAULT '2'
-        )`);
-
-        this.db.run(`CREATE TABLE IF NOT EXISTS activate (
-          id INTEGER PRIMARY KEY CHECK (id = 1),
-          apiKey TEXT NOT NULL,
-          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          personalAgreement BOOLEAN
         )`);
 
         this.db.run(`CREATE TABLE IF NOT EXISTS logger (
@@ -127,49 +184,65 @@ class DatabaseModel {
         this.db.run(`CREATE TABLE IF NOT EXISTS resume (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
-          contacts TEXT,           -- JSON array of objects
-          links TEXT,              -- JSON array of objects
-          work_history TEXT,       -- JSON array of objects
-          education TEXT,          -- JSON array of objects
-          personal_projects TEXT,  -- JSON array of objects
-          skills TEXT,             -- JSON array of objects
-          cover_letter_para TEXT   -- long text
+          contacts TEXT,
+          links TEXT,
+          work_history TEXT,
+          education TEXT,
+          personal_projects TEXT,
+          skills TEXT,
+          cover_letter_para TEXT
       )`);
 
-        // Saved artifacts table for unified persistence
+        this.db.run(`CREATE TABLE IF NOT EXISTS user_api_keys (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL DEFAULT 1,
+          provider TEXT NOT NULL,
+          tier TEXT NOT NULL,
+          encrypted_api_key TEXT NOT NULL,
+          is_active BOOLEAN DEFAULT 1,
+          is_default BOOLEAN DEFAULT 0,
+          selected_text_model TEXT,
+          selected_image_model TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, provider, tier),
+          CHECK(is_default IN (0, 1)),
+          CHECK(is_active IN (0, 1))
+        )`);
+
         console.log('📋 Creating saved_artifacts table...');
         this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           app_name TEXT NOT NULL,
           filename TEXT NOT NULL,
-          data TEXT NOT NULL,           -- JSON string or base64 encoded data
-          data_type TEXT NOT NULL,      -- text | json | image | trip | resume | invitation
+          data TEXT NOT NULL,
+          data_type TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          metadata TEXT,                -- JSON metadata (optional)
-          UNIQUE(app_name, filename)    -- Prevent duplicate filenames per app
+          metadata TEXT,
+          UNIQUE(app_name, filename)
         )`);
         console.log('✅ saved_artifacts table created');
 
-        // Usage metrics table for analytics
         console.log('📊 Creating usage_metrics table...');
         this.db.run(`CREATE TABLE IF NOT EXISTS usage_metrics (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           app_name TEXT NOT NULL,
-          event_type TEXT NOT NULL,     -- api_hit | save | generate
+          event_type TEXT NOT NULL,
           timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          metadata TEXT                 -- JSON additional data (optional)
+          metadata TEXT
         )`);
         console.log('✅ usage_metrics table created');
 
-        // Create indexes for performance
         console.log('🔍 Creating indexes...');
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_app_name ON saved_artifacts(app_name)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_saved_artifacts_created_at ON saved_artifacts(created_at)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_app_name ON usage_metrics(app_name)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_usage_metrics_timestamp ON usage_metrics(timestamp)`);
+        this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_default_key ON user_api_keys(user_id) WHERE is_default = 1`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
         console.log('✅ Indexes created');
-
 
         this.saveToDisk();
       }
@@ -183,6 +256,10 @@ class DatabaseModel {
   }
 
   private saveToDisk() {
+    if (!this.db) {
+      console.warn('Database save skipped: not initialized');
+      return;
+    }
     try {
       const data = this.db.export();
       fs.writeFileSync(this.dbPath, Buffer.from(data));
@@ -193,6 +270,9 @@ class DatabaseModel {
   }
 
   query<T>(sql: string, params: any[] = []): T[] {
+    if (!this.db) {
+      throw new Error('Database not initialized. Ensure db.init() is called before usage.');
+    }
     const stmt = this.db.prepare(sql);
     stmt.bind(params);
 
@@ -206,6 +286,9 @@ class DatabaseModel {
   }
 
   execute(sql: string, params: any[] = []) {
+    if (!this.db) {
+      throw new Error('Database not initialized. Ensure db.init() is called before usage.');
+    }
     const result = this.db.run(sql, params);
     this.saveToDisk();
     return result;

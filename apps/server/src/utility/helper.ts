@@ -1,12 +1,5 @@
 import { db } from "@gem/db";
-import { Activate } from "@gem/shared";
 import { decrypt } from "./security.js";
-import { UserModel } from "../models/userModel.js";
-import { callGemini as callGemini2 } from "../proxies/gemini2.js";
-import { callGemini as callGemini3 } from "../proxies/gemini3.js";
-import { callGemini as callGemini2Img } from "../proxies/gemini2img.js";
-import { callGemini as callGemini3Img } from "../proxies/gemini3img.js";
-import { GeminiResponse, GeminiImgResponse } from "@gem/shared";
 
 /**
  * Validate Gemini API key with retry logic
@@ -49,32 +42,20 @@ const validateGeminiApiKey = async (apiKey: string, retries: number = 3): Promis
 
 
 async function getApiKey(): Promise<string> {
-    const activate = await db.query<Activate>("SELECT apiKey FROM activate WHERE id=1 LIMIT 1");
-    const key = activate[0].apiKey;
-    const decryptedKey = await decrypt(key);
-    return decryptedKey;
-}
+    const newKeys = db.query<{ encrypted_api_key: string }>(
+        'SELECT encrypted_api_key FROM user_api_keys WHERE user_id = 1 AND is_active = 1 ORDER BY is_default DESC LIMIT 1'
+    );
 
-/**
- * Get the appropriate Gemini proxy function based on user preference (for text generation)
- */
-async function callGeminiWithUserPreference(apiKey: string, prompt: string): Promise<GeminiResponse> {
-    const version = UserModel.getGeminiVersion();
-    if (version === '3') {
-        return callGemini3(apiKey, prompt);
+    if (newKeys.length === 0) {
+        throw new Error('No API key configured. Please add an API key in Profile settings.');
     }
-    return callGemini2(apiKey, prompt);
-}
 
-/**
- * Get the appropriate Gemini image proxy function based on user preference (for image generation)
- */
-async function callGeminiImageWithUserPreference(apiKey: string, prompt: string): Promise<GeminiImgResponse> {
-    const version = UserModel.getGeminiVersion();
-    if (version === '3') {
-        return callGemini3Img(apiKey, prompt);
+    try {
+        return await decrypt(newKeys[0].encrypted_api_key);
+    } catch (decryptError) {
+        // Handle unencrypted keys from migration
+        return newKeys[0].encrypted_api_key;
     }
-    return callGemini2Img(apiKey, prompt);
 }
 
-export { validateGeminiApiKey, getApiKey, callGeminiWithUserPreference, callGeminiImageWithUserPreference };
+export { validateGeminiApiKey, getApiKey };

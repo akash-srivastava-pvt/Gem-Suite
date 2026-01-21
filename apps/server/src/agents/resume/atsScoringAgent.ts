@@ -4,8 +4,7 @@
 
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { parseAIJSON } from '../../utility/jsonParser.js';
 
 export const ATSScoringAgent: Agent = {
@@ -21,7 +20,7 @@ export const ATSScoringAgent: Agent = {
 
     // Use MCP ATS tool to analyze
     const resumeText = extractResumeText(resume);
-    
+
     let atsAnalysis;
     if (jobDescription) {
       atsAnalysis = await mcpServer.executeTool('ats_analyzer', {
@@ -71,8 +70,12 @@ Return the optimized resume in the same JSON structure.
 Return ONLY valid JSON, no markdown.
     `;
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: 'resumemaker',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
     const optimizedResume = parseAIJSON(response.data);
 
     // Ensure all input data is preserved - merge with optimized output
@@ -80,23 +83,23 @@ Return ONLY valid JSON, no markdown.
     const result = {
       name: optimizedResume.name || originalResume.name || '',
       summary: optimizedResume.summary || originalResume.summary || '',
-      contacts: optimizedResume.contacts && optimizedResume.contacts.length > 0 
-        ? optimizedResume.contacts 
+      contacts: optimizedResume.contacts && optimizedResume.contacts.length > 0
+        ? optimizedResume.contacts
         : (originalResume.contacts || []),
-      links: optimizedResume.links && optimizedResume.links.length > 0 
-        ? optimizedResume.links 
+      links: optimizedResume.links && optimizedResume.links.length > 0
+        ? optimizedResume.links
         : (originalResume.links || []),
-      skills: optimizedResume.skills && optimizedResume.skills.length > 0 
-        ? optimizedResume.skills 
+      skills: optimizedResume.skills && optimizedResume.skills.length > 0
+        ? optimizedResume.skills
         : (originalResume.skills || []),
-      work_experience: optimizedResume.work_experience && optimizedResume.work_experience.length > 0 
-        ? optimizedResume.work_experience 
+      work_experience: optimizedResume.work_experience && optimizedResume.work_experience.length > 0
+        ? optimizedResume.work_experience
         : (originalResume.work_experience || originalResume.work_history || []),
-      education: optimizedResume.education && optimizedResume.education.length > 0 
-        ? optimizedResume.education 
+      education: optimizedResume.education && optimizedResume.education.length > 0
+        ? optimizedResume.education
         : (originalResume.education || []),
-      projects: optimizedResume.projects && optimizedResume.projects.length > 0 
-        ? optimizedResume.projects 
+      projects: optimizedResume.projects && optimizedResume.projects.length > 0
+        ? optimizedResume.projects
         : (originalResume.projects || originalResume.personal_projects || []),
       atsScore: atsAnalysis.score,
       optimizationNotes: atsAnalysis.suggestions || []
@@ -110,9 +113,9 @@ function extractResumeText(resume: any): string {
   if (!resume || typeof resume !== 'object') {
     return '';
   }
-  
+
   const parts: string[] = [];
-  
+
   if (resume.summary) parts.push(resume.summary);
   if (resume.skills && Array.isArray(resume.skills)) {
     parts.push(resume.skills.join(', '));
@@ -124,7 +127,7 @@ function extractResumeText(resume: any): string {
       }
     });
   }
-  
+
   return parts.join(' ') || JSON.stringify(resume);
 }
 

@@ -5,30 +5,45 @@ import AppTile from "./AppTile.js";
 type Props = {
     apps: ShellApp[];
     onSelectApp: (appId: string) => void;
-    isAgreed: boolean;
+    unlockStatus: any;
 };
 
-const HomeView: React.FC<Props> = ({ apps, onSelectApp, isAgreed }) => {
+const HomeView: React.FC<Props> = ({ apps, onSelectApp, unlockStatus }) => {
+    const isUnlocked = unlockStatus?.unlocked || false;
+    const hasApiKey = unlockStatus?.hasActiveApiKey || false;
+    const hasAgreement = unlockStatus?.acceptedAgreement || false;
+
+    const getSubheading = () => {
+        if (!hasAgreement) {
+            return "Action Required: Please complete the User Agreement in Gem Profile to continue.";
+        }
+        if (!hasApiKey) {
+            return "Action Required: Please configure API keys in Gem Profile to unlock all applications.";
+        }
+        return "Professional AI workspace for creative and analytical tasks.";
+    };
+
     return (
         <div style={styles.container}>
             <div style={styles.content}>
                 <div style={styles.headerArea}>
                     <h1 style={styles.heading}>Gem Desktop</h1>
                     <p style={styles.subheading}>
-                        {isAgreed
-                            ? "Professional AI workspace for creative and analytical tasks."
-                            : "Action Required: Please complete the User Agreement in Gem Profile to unlock all features."}
+                        {getSubheading()}
                     </p>
                 </div>
                 <div style={styles.grid}>
-                    {apps.map((app) => (
-                        <AppTile
-                            key={app.id}
-                            app={app}
-                            onClick={() => onSelectApp(app.id)}
-                            disabled={!isAgreed && app.id !== 'profile'}
-                        />
-                    ))}
+                    {apps.map((app) => {
+                        const isLocked = (!isUnlocked && app.id !== 'profile') || (isUnlocked && unlockStatus?.lockedApps?.includes(app.id));
+                        return (
+                            <AppTile
+                                key={app.id}
+                                app={app}
+                                onClick={() => onSelectApp(app.id)}
+                                disabled={isLocked}
+                            />
+                        );
+                    })}
                 </div>
             </div>
             <div style={styles.footer}>

@@ -4,51 +4,52 @@ export interface User {
     id: number;
     name: string;
     personalAgreement: boolean;
-    geminiVersion?: '2' | '3';
 }
 
 export const UserModel = {
     getUser: (): User | null => {
         const rows = db.query<User>('SELECT * FROM users LIMIT 1');
         if (rows.length > 0) {
-            const user = rows[0];
-            // Ensure geminiVersion defaults to '2' if not set
-            if (!user.geminiVersion) {
-                user.geminiVersion = '2';
-            }
-            return user;
+            return rows[0];
         }
         return null;
     },
 
     createUser: (name: string): void => {
         db.execute(
-            'INSERT INTO users (name, personalAgreement, geminiVersion) VALUES (?, ?, ?)',
-            [name, true, '2']
+            'INSERT INTO users (name, personalAgreement) VALUES (?, ?)',
+            [name, true]
         );
         db.execute('INSERT INTO logger (event) VALUES (?)', [`User agreement signed by ${name}`]);
     },
 
-    updateGeminiVersion: (version: '2' | '3'): void => {
-        const user = UserModel.getUser();
-        if (user) {
-            db.execute(
-                'UPDATE users SET geminiVersion = ? WHERE id = ?',
-                [version, user.id]
-            );
-        }
-    },
 
-    getGeminiVersion: (): '2' | '3' => {
-        const user = UserModel.getUser();
-        return user?.geminiVersion || '2';
-    },
 
     deleteData: (): void => {
-        db.execute('DELETE FROM users');
-        db.execute('DELETE FROM activate');
-        db.execute('DELETE FROM resume');
-        db.execute('INSERT INTO logger (event) VALUES (?)', ['All user data deleted']);
+        try {
+            // Use a transaction for atomic deletion
+            db.execute('BEGIN TRANSACTION');
+
+            db.execute('DELETE FROM users');
+            db.execute('DELETE FROM resume');
+            db.execute('DELETE FROM user_api_keys');
+            db.execute('DELETE FROM usage_metrics');
+            db.execute('DELETE FROM saved_artifacts');
+
+            // Try to delete legacy table if it exists
+            try {
+                db.execute('DELETE FROM activate');
+            } catch (e) {
+                // Ignore error if table doesn't exist
+            }
+
+            db.execute('INSERT INTO logger (event) VALUES (?)', ['All user data deleted']);
+
+            db.execute('COMMIT');
+        } catch (error) {
+            db.execute('ROLLBACK');
+            throw error;
+        }
     },
 
     hasAgreed: (): boolean => {

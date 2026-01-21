@@ -117,8 +117,16 @@ function startServer(): Promise<number> {
     });
 
     serverProcess.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
-      if (!resolved) {
-        resolved = true;
+      if (isQuitting) return;
+
+      log(`Server process exited unexpectedly (code=${code}, signal=${signal})`, 'WARN');
+      serverProcess = null;
+
+      if (resolved) {
+        // Server was running, now it crashed. Restart it.
+        restartServer();
+      } else {
+        // It failed during startup
         reject(new Error(`Server exited: code=${code} signal=${signal}`));
       }
     });
@@ -130,6 +138,24 @@ function startServer(): Promise<number> {
       }
     }, 30000);
   });
+}
+
+function restartServer() {
+  if (isQuitting) return;
+  log('Restarting server process...', 'WARN');
+
+  // Wait brief period before restart to prevent tight loops
+  setTimeout(async () => {
+    try {
+      const port = await startServer();
+      // Optionally notify renderer if window exists, or just log
+      log(`Server restarted on port ${port}`);
+    } catch (e) {
+      log(`Failed to restart server: ${e}`, 'ERROR');
+      // Retry again? Or show error.
+      // Basic approach: try again with longer backoff
+    }
+  }, 2000);
 }
 
 function waitForHealth(port: number): Promise<boolean> {

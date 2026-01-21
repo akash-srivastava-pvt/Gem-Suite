@@ -87,13 +87,7 @@ export const SaveControls: React.FC<SaveControlsProps> = ({
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        <button
-          className="secondary-btn"
-          onClick={onCreateNew}
-          disabled={saving}
-        >
-          Create New
-        </button>
+
 
         <button
           className="secondary-btn"

@@ -26,5 +26,16 @@ export {
     SaveArtifactRequest,
     UpdateArtifactRequest,
     UsageMetrics,
-    HealthStatus
+    HealthStatus,
+    UserApiKey,
+    ApiKeyRequest,
+    AiProxyRequest,
+    UnlockStatus
 } from './types.js';
+
+export {
+    AI_PROVIDERS,
+    ProviderConfig,
+    TierConfig,
+    ModelConfig
+} from './ai-provider.config.js';

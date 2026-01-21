@@ -13,8 +13,12 @@ export const CostAgent: Agent = {
   execute: async (input: any, context?: any) => {
     const { itinerary, peopleCount } = input;
 
+    // console.log("Input", input);
+
     const actualPeopleCount =
       typeof peopleCount === "number" && peopleCount > 0 ? peopleCount : 1;
+
+    console.log("Actual People Count", actualPeopleCount);
 
     if (!Array.isArray(itinerary)) {
       return input; // Pass through if no itinerary
@@ -28,6 +32,8 @@ export const CostAgent: Agent = {
       totalTripCost: 0,
       costPerPerson: 0
     };
+
+    console.log("Cost Breakdown", costBreakdown);
 
     for (const day of itinerary) {
       // Inter-city travel

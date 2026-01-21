@@ -39,9 +39,11 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
                     <p>This is a strictly on-premise system. All data and AI-generated artifacts are stored locally on your device.</p>
                     <p>By using this workspace, you acknowledge:</p>
                     <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>
-                        <li>Data residency is restricted to this machine.</li>
-                        <li>AI outputs are for professional assistance and require user validation.</li>
-                        <li>Aryavarta Labs is not liable for data loss or misuse of generated content.</li>
+                        <li><strong>Data Residency:</strong> All data is stored locally on this machine. You are responsible for its backup and security.</li>
+                        <li><strong>AI Fallibility:</strong> AI outputs may be inaccurate or biased. Always human-verify critical information before use.</li>
+                        <li><strong>Prohibited Use:</strong> You agree not to use this tool for generating harmful, illegal, or deceptive content.</li>
+                        <li><strong>Liability:</strong> Aryavarta Labs is not liable for any direct or indirect damages arising from the use of generated data.</li>
+                        <li><strong>API Usage:</strong> API keys are stored locally but transmitted securely to Google's servers for inference only.</li>
                     </ul>
                 </div>
 

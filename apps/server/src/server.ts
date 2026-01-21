@@ -1,6 +1,7 @@
 import express, { Express } from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import 'dotenv/config';
 import { fileURLToPath } from 'url';
 
@@ -36,12 +37,19 @@ async function startServer() {
     const app: Express = express();
 
     app.use(cors());
-    app.use(express.json());
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Request logging middleware
     app.use((req, res, next) => {
       console.log(`🌐 ${req.method} ${req.url}`);
       next();
+    });
+
+    // Error handling middleware
+    app.use((err: any, req: any, res: any, next: any) => {
+      console.error('Server error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     });
 
     // ============================================
@@ -57,10 +65,22 @@ async function startServer() {
     });
 
     app.get('/health', (_req, res) => {
-      res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-      });
+      try {
+        // Quick database check
+        const testQuery = db.query('SELECT 1 as test');
+        res.json({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          database: testQuery.length > 0 ? 'connected' : 'disconnected'
+        });
+      } catch (error) {
+        console.error('Health check failed:', error);
+        res.status(500).json({
+          status: 'error',
+          timestamp: new Date().toISOString(),
+          error: 'Database connection failed'
+        });
+      }
     });
 
     // ============================================
@@ -81,13 +101,17 @@ async function startServer() {
         return res.status(404).json({ error: 'API route not found' });
       }
 
-      res.sendFile(path.join(publicPath, 'index.html'));
+      const indexPath = path.join(publicPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Frontend not found');
+      }
     });
 
     // ============================================
     // START SERVER
     // ============================================
-
 
     const PORT = Number(process.env.PORT) || 0;
 

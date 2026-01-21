@@ -219,7 +219,7 @@ export class SaveService {
   /**
    * Track usage metrics
    */
-  async trackUsage(appName: string, eventType: 'api_hit' | 'save' | 'generate', metadata?: any): Promise<void> {
+  async trackUsage(appName: string, eventType: 'api_hit' | 'save' | 'generate' | 'api_error', metadata?: any): Promise<void> {
     try {
       console.log(`📊 Tracking usage: ${appName} - ${eventType}`);
       const metadataJson = metadata ? JSON.stringify(metadata) : null;
@@ -242,35 +242,42 @@ export class SaveService {
   async getUsageMetrics(): Promise<UsageMetrics[]> {
     try {
       console.log('📊 Server: Fetching usage metrics from database...');
+      const allApps = ['texteditor', 'tripplanner', 'invitation', 'resumemaker'];
+
       const rows = db.query(`
         SELECT
           app_name,
           SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
           SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
         FROM usage_metrics
         GROUP BY app_name
         ORDER BY app_name
       `);
 
-      // If no metrics data exists, return default empty metrics
-      if (rows.length === 0) {
-        return [
-          { appName: 'texteditor', apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: 'tripplanner', apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: 'invitation', apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 },
-          { appName: 'resumemaker', apiHits: 0, savedArtifacts: 0, generatedArtifacts: 0 }
-        ];
-      }
+      // console.log('📊 Raw metrics rows from DB:', rows);
 
-      const result = rows.map((row: any) => ({
-        appName: row.app_name as string,
-        apiHits: row.api_hits as number,
-        savedArtifacts: row.saved_artifacts as number,
-        generatedArtifacts: row.generated_artifacts as number
-      }));
+      const metricsMap = new Map();
+      rows.forEach((row: any) => {
+        metricsMap.set(row.app_name, {
+          appName: row.app_name as string,
+          apiHits: row.api_hits as number,
+          savedArtifacts: row.saved_artifacts as number,
+          generatedArtifacts: row.generated_artifacts as number,
+          apiErrors: row.api_errors as number
+        });
+      });
 
-      console.log('📊 Server: Returning metrics:', result);
+      const result = allApps.map(appName => metricsMap.get(appName) || {
+        appName,
+        apiHits: 0,
+        savedArtifacts: 0,
+        generatedArtifacts: 0,
+        apiErrors: 0
+      });
+
+      // console.log('📊 Server: Returning metrics:', result);
       return result;
     } catch (error: any) {
       console.error('SaveService.getUsageMetrics error:', error);
@@ -288,7 +295,8 @@ export class SaveService {
           app_name,
           SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
           SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts
+          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
         FROM usage_metrics
         WHERE app_name = ?
         GROUP BY app_name
@@ -303,7 +311,8 @@ export class SaveService {
         appName: row.app_name as string,
         apiHits: row.api_hits as number,
         savedArtifacts: row.saved_artifacts as number,
-        generatedArtifacts: row.generated_artifacts as number
+        generatedArtifacts: row.generated_artifacts as number,
+        apiErrors: row.api_errors as number
       };
     } catch (error: any) {
       console.error('SaveService.getAppUsageMetrics error:', error);

@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
-import { getApiKey } from '../utility/helper.js';
 import { LoggerModel } from '../models/loggerModel.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
+import { saveService } from '../services/SaveService.js';
 
 export async function GreetingInvitationController(
     req: Request,
@@ -54,19 +54,12 @@ export async function GreetingInvitationController(
         }
 
         // ─────────────────────────────────────────
-        // 2. API Key Retrieval
-        // ─────────────────────────────────────────
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            return res.status(401).json({
-                error: 'Gemini API key not found. Please activate first.',
-            });
-        }
-
-        // ─────────────────────────────────────────
-        // 3. Execute Workflow with MCP/A2A
+        // 2. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
         LoggerModel.log(`Starting greeting card generation workflow: ${greeting}`);
+
+        // Track the unique flow API hit
+        await saveService.trackUsage('invitation', 'api_hit', { theme: 'greetings', greetingType: theme });
 
         const invitationData = {
             theme: 'greetings',
@@ -80,7 +73,8 @@ export async function GreetingInvitationController(
 
         const result = await agentOrchestrator.executeWorkflow(invitationMakerWorkflow, {
             data: invitationData,
-            theme: 'greetings'
+            theme: 'greetings',
+            trackUsage: false // Disable internal tracking
         });
 
         if (!result.success) {
@@ -91,10 +85,12 @@ export async function GreetingInvitationController(
             });
         }
 
+        // Get the final result from workflow steps with null safety
+        const workflowResults = result.results || {};
         const finalResult = {
-            ...result.results.design,
-            ...result.results.localization,
-            ...result.results.quality
+            ...(workflowResults.design || {}),
+            ...(workflowResults.localization || {}),
+            ...(workflowResults.quality || {})
         };
 
         if (!finalResult?.image?.base64) {
@@ -105,8 +101,15 @@ export async function GreetingInvitationController(
 
         LoggerModel.log(`Greeting card generation completed: ${greeting}`);
 
+        // Track generation event
+        await saveService.trackUsage('invitation', 'generate', {
+            theme: 'greetings',
+            greetingType: theme,
+            language
+        });
+
         // ─────────────────────────────────────────
-        // 4. Success Response
+        // 3. Success Response
         // ─────────────────────────────────────────
         return res.status(200).json({
             success: true,
@@ -120,6 +123,11 @@ export async function GreetingInvitationController(
 
     } catch (error: any) {
         console.error('Greeting card generation failed:', error);
+        await saveService.trackUsage('invitation', 'api_error', {
+            error: error.message,
+            theme: 'greetings',
+            greetingType: req.body?.data?.theme
+        });
 
         if (error instanceof ValidationError) {
             return res.status(400).json({ error: error.message });

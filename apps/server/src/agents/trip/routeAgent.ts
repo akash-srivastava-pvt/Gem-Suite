@@ -5,8 +5,7 @@
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
 import { buildTripPlannerPrompt } from '../trip.plan.agent.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { parseAIJSON } from '../../utility/jsonParser.js';
 
 export const RouteAgent: Agent = {
@@ -35,12 +34,21 @@ export const RouteAgent: Agent = {
       tripType
     });
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: 'tripplanner',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
+
     const tripData = parseAIJSON(response.data);
 
     return {
       ...tripData,
+      peopleCount: input.peopleCount,
+      startLocation: input.startLocation,
+      endLocation: input.endLocation,
+      tripType: input.tripType,
       routeOptimization: {
         originalOrder: places,
         optimizedOrder: optimizedPlaces,
@@ -49,4 +57,3 @@ export const RouteAgent: Agent = {
     };
   }
 };
-

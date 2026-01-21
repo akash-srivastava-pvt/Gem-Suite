@@ -2,16 +2,10 @@ import { Request, Response } from "express";
 import { ResumeService } from "../services/ResumeService.js";
 import { AnonymisationService } from "../services/AnonymisationService.js";
 import { AuditLogService } from "../services/AuditLogService.js";
-import { agentOrchestrator } from "../orchestration/agentOrchestrator.js";
-import { resumeMakerWorkflow } from "../orchestration/workflows.js";
 import { GeminiTransformService } from "../services/GeminiTransformService.js";
 import { saveService } from "../services/SaveService.js";
 
-/**
- * Transform resume data from agent format to UI-expected format
- */
 function transformResumeToUIFormat(data: any): any {
-    // Transform structured AI output into flat UI-expected format
     const name = data.header?.name || '';
     const contacts = data.header?.contacts || [];
     const links = data.header?.links || [];
@@ -45,7 +39,7 @@ function transformResumeToUIFormat(data: any): any {
         education,
         projects,
     };
-    
+
     return result;
 }
 
@@ -54,7 +48,6 @@ export const ResumeController = {
         try {
             const resume = await ResumeService.getResume();
             if (resume) {
-                // Parse JSON fields
                 const formatted = {
                     ...resume,
                     contacts: JSON.parse(resume.contacts || "[]"),
@@ -98,73 +91,24 @@ export const ResumeController = {
         try {
             const data = req.body;
 
-            // Track API usage
-            await saveService.trackUsage('resumemaker', 'api_hit', {
-              action: 'generate_ats',
-              hasJobDescription: !!data.jobDescription,
-              industry: data.industry
-            });
-
             AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
             AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
-            
-            // Execute workflow with MCP/A2A
-            const result = await agentOrchestrator.executeWorkflow(resumeMakerWorkflow, {
-                anonymisedData,
-                jobDescription: data.jobDescription,
-                industry: data.industry
-            });
 
-            // Use the formatted result as base (it has the correct UI structure)
-            // If format step failed, fall back to previous steps and transform manually
-            let geminiResult = result.results.format;
-            
-            if (!geminiResult) {
-                // If format failed, use the last successful step and transform it
-                const lastResult = result.results.ats || result.results.grammar || result.results.draft;
-                if (!lastResult) {
-                    // If no results at all, check errors
-                    const errorMessages = result.errors ? Object.entries(result.errors)
-                        .map(([step, err]: [string, any]) => `${step}: ${err.message || String(err)}`)
-                        .join(', ') : 'Unknown error';
-                    throw new Error(`Workflow failed - no results: ${errorMessages}`);
-                }
-                
-                // Transform the result to UI format
-                geminiResult = lastResult;
-            }
-            AuditLogService.log("Resume workflow completed", "RESUME_ATS", false, "SUCCESS");
-            
-            // Always transform the Gemini result to UI format before reinserting PII
-            const uiFormattedResult = transformResumeToUIFormat(geminiResult);
+            // Track the unique flow API hit
+            await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_ats' });
 
-            // CRITICAL FIX: Ensure original data is preserved and merged with AI enhancements
-            console.log('Original anonymised data sections:', {
-                education: anonymisedData.education?.length || 0,
-                work_history: anonymisedData.work_history?.length || 0,
-                personal_projects: anonymisedData.personal_projects?.length || 0,
-                skills: anonymisedData.skills?.length || 0
-            });
+            // Use the high-quality GeminiTransformService instead of basic prompt
+            const result = await GeminiTransformService.generateATSResume(anonymisedData, false);
 
-            console.log('AI result sections:', {
-                education: uiFormattedResult.education?.length || 0,
-                work_experience: uiFormattedResult.work_experience?.length || 0,
-                projects: uiFormattedResult.projects?.length || 0,
-                skills: uiFormattedResult.skills?.length || 0
-            });
-
-            // Preserve original education data if AI didn't include it or it's empty
-            if ((!uiFormattedResult.education || uiFormattedResult.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
-                console.log('Preserving original education data');
-                uiFormattedResult.education = anonymisedData.education;
+            // Apply fallback logic to ensure all data is preserved
+            if ((!result.education || result.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
+                result.education = anonymisedData.education;
             }
 
-            // Preserve work experience
-            if ((!uiFormattedResult.work_experience || uiFormattedResult.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
-                console.log('Preserving original work history data');
-                uiFormattedResult.work_experience = anonymisedData.work_history.map((exp: any) => ({
+            if ((!result.work_experience || result.work_experience.length === 0) && anonymisedData.work_history && anonymisedData.work_history.length > 0) {
+                result.work_experience = anonymisedData.work_history.map((exp: any) => ({
                     title: exp.role || '',
                     organization: exp.company || '',
                     duration: exp.duration || '',
@@ -172,31 +116,27 @@ export const ResumeController = {
                 }));
             }
 
-            // Preserve projects
-            if ((!uiFormattedResult.projects || uiFormattedResult.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
-                console.log('Preserving original projects data');
-                uiFormattedResult.projects = anonymisedData.personal_projects;
+            if ((!result.projects || result.projects.length === 0) && anonymisedData.personal_projects && anonymisedData.personal_projects.length > 0) {
+                result.projects = anonymisedData.personal_projects;
             }
 
-            // Preserve skills
-            if ((!uiFormattedResult.skills || uiFormattedResult.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
-                console.log('Preserving original skills data');
-                uiFormattedResult.skills = anonymisedData.skills;
+            if ((!result.skills || result.skills.length === 0) && anonymisedData.skills && anonymisedData.skills.length > 0) {
+                result.skills = anonymisedData.skills;
             }
 
-            const finalResult = AnonymisationService.reinsertIntoJson(uiFormattedResult, originalPII);
+            const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
             AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
 
-            // Track generation event
             await saveService.trackUsage('resumemaker', 'generate', {
-              action: 'generate_ats',
-              hasJobDescription: !!data.jobDescription,
-              industry: data.industry
+                action: 'generate_ats',
+                hasJobDescription: !!data.jobDescription,
+                industry: data.industry
             });
 
             res.json(finalResult);
         } catch (error: any) {
             AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
+            await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_ats' });
             res.status(500).json({ error: error.message });
         }
     },
@@ -205,25 +145,24 @@ export const ResumeController = {
         try {
             const data = req.body;
 
-            // Track API usage
-            await saveService.trackUsage('resumemaker', 'api_hit', {
-              action: 'generate_cover_letter'
-            });
-
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
             AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
-            const geminiResult = await GeminiTransformService.generateCoverLetter(anonymisedData);
 
-            const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+            // Track the unique flow API hit
+            await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_cover_letter' });
 
-            // Track generation event
+            const result = await GeminiTransformService.generateCoverLetter(anonymisedData, false);
+
+            const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
+
             await saveService.trackUsage('resumemaker', 'generate', {
-              action: 'generate_cover_letter'
+                action: 'generate_cover_letter'
             });
 
             res.json(finalResult);
         } catch (error: any) {
+            await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_cover_letter' });
             res.status(500).json({ error: error.message });
         }
     },
@@ -232,25 +171,24 @@ export const ResumeController = {
         try {
             const data = req.body;
 
-            // Track API usage
-            await saveService.trackUsage('resumemaker', 'api_hit', {
-              action: 'generate_sop'
-            });
-
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
             AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
-            const geminiResult = await GeminiTransformService.generateSOP(anonymisedData);
 
-            const finalResult = AnonymisationService.reinsertIntoJson(geminiResult, originalPII);
+            // Track the unique flow API hit
+            await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_sop' });
 
-            // Track generation event
+            const result = await GeminiTransformService.generateSOP(anonymisedData, false);
+
+            const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
+
             await saveService.trackUsage('resumemaker', 'generate', {
-              action: 'generate_sop'
+                action: 'generate_sop'
             });
 
             res.json(finalResult);
         } catch (error: any) {
+            await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_sop' });
             res.status(500).json({ error: error.message });
         }
     }

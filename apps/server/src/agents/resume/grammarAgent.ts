@@ -4,8 +4,7 @@
 
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 import { extractTextContent } from '../../utility/jsonParser.js';
 
 export const GrammarAgent: Agent = {
@@ -41,13 +40,17 @@ Return the corrected resume in the same JSON structure, with all grammar and sty
 Return ONLY valid JSON, no markdown.
     `;
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
-    
+    const response = await AiProxyService.execute({
+      appId: 'resumemaker',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
+
     // Parse and return corrected resume
     const { parseAIJSON } = await import('../../utility/jsonParser.js');
     const corrected = parseAIJSON(response.data);
-    
+
     // Ensure all input data is preserved - merge with corrected output
     const originalResume = input.resume || input;
     return {
@@ -56,14 +59,14 @@ Return ONLY valid JSON, no markdown.
       contacts: corrected.contacts && corrected.contacts.length > 0 ? corrected.contacts : (originalResume.contacts || []),
       links: corrected.links && corrected.links.length > 0 ? corrected.links : (originalResume.links || []),
       skills: corrected.skills && corrected.skills.length > 0 ? corrected.skills : (originalResume.skills || []),
-      work_experience: corrected.work_experience && corrected.work_experience.length > 0 
-        ? corrected.work_experience 
+      work_experience: corrected.work_experience && corrected.work_experience.length > 0
+        ? corrected.work_experience
         : (originalResume.work_experience || originalResume.work_history || []),
-      education: corrected.education && corrected.education.length > 0 
-        ? corrected.education 
+      education: corrected.education && corrected.education.length > 0
+        ? corrected.education
         : (originalResume.education || []),
-      projects: corrected.projects && corrected.projects.length > 0 
-        ? corrected.projects 
+      projects: corrected.projects && corrected.projects.length > 0
+        ? corrected.projects
         : (originalResume.projects || originalResume.personal_projects || [])
     };
   }
@@ -73,9 +76,9 @@ function extractResumeText(resume: any): string {
   if (!resume || typeof resume !== 'object') {
     return '';
   }
-  
+
   const parts: string[] = [];
-  
+
   if (resume.summary) parts.push(`Summary: ${resume.summary}`);
   if (resume.work_experience && Array.isArray(resume.work_experience)) {
     resume.work_experience.forEach((exp: any) => {
@@ -91,7 +94,7 @@ function extractResumeText(resume: any): string {
       }
     });
   }
-  
+
   return parts.join('\n') || JSON.stringify(resume);
 }
 

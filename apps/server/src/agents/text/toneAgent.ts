@@ -4,8 +4,7 @@
 
 import { Agent } from '../../orchestration/types.js';
 import { mcpServer } from '../../mcp/mcpServer.js';
-import { callGeminiWithUserPreference } from '../../utility/helper.js';
-import { getApiKey } from '../../utility/helper.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
 
 export const ToneAgent: Agent = {
   id: 'text-tone-agent',
@@ -37,10 +36,15 @@ Text to adjust:
 ${text}
 
 Return the text adjusted to match the ${tone} tone.
+Return ONLY plain text. Do NOT use markdown formatting (bold, italics, etc).
     `;
 
-    const apiKey = await getApiKey();
-    const response = await callGeminiWithUserPreference(apiKey, prompt);
+    const response = await AiProxyService.execute({
+      appId: 'texteditor',
+      modality: 'text',
+      payload: { prompt },
+      trackUsage: input.trackUsage
+    });
 
     return response.data;
   }

@@ -69,7 +69,7 @@ router.get('/metrics/all', async (req: Request, res: Response) => {
   console.log('📊 Metrics endpoint called');
   try {
     const metrics = await saveService.getUsageMetrics();
-    console.log('📊 Returning metrics:', metrics);
+    // console.log('📊 Returning metrics:', metrics);
 
     return res.status(200).json({
       success: true,
@@ -132,7 +132,7 @@ router.get('/health', async (req: Request, res: Response) => {
     console.log('🏥 Health status:', healthStatus.status);
 
     const statusCode = healthStatus.status === 'healthy' ? 200 :
-                      healthStatus.status === 'degraded' ? 206 : 503;
+      healthStatus.status === 'degraded' ? 206 : 503;
 
     return res.status(statusCode).json({
       success: healthStatus.status === 'healthy',

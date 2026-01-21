@@ -43,6 +43,7 @@ export const ResumeMakerApp: React.FC = () => {
         skills: [],
         cover_letter_para: '',
     });
+    const [isDirty, setIsDirty] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<OutputTab>('ats');
@@ -72,6 +73,7 @@ export const ResumeMakerApp: React.FC = () => {
                 setGenerated({});
                 setActiveTab('ats');
             }
+            setIsDirty(false);
         } catch (err) {
             console.error('Failed to parse resume data:', err);
         }
@@ -88,8 +90,10 @@ export const ResumeMakerApp: React.FC = () => {
             skills: [],
             cover_letter_para: '',
         });
+
         setGenerated({});
         setActiveTab('ats');
+        setIsDirty(false);
     };
 
     // Check if all three components are generated
@@ -115,6 +119,7 @@ export const ResumeMakerApp: React.FC = () => {
             setActiveTab('ats');
             setPreviewMode(true);
             setLoading(false);
+            setIsDirty(false);
 
         } catch (error) {
             console.error('Error generating documents:', error);
@@ -128,33 +133,34 @@ export const ResumeMakerApp: React.FC = () => {
             <>
                 <SaveControls
                     appName="resumemaker"
-                    currentData={isCompletePackage ? JSON.stringify({
+                    currentData={JSON.stringify({
                         formData: data,
                         generated: generated
-                    }) : ''}
+                    })}
                     dataType="resume"
                     onDataLoaded={handleDataLoaded}
                     onCreateNew={handleCreateNew}
                 />
                 <button
                     className="gen-btn-header"
-                    disabled={loading || isCompletePackage}
+                    disabled={loading || (isCompletePackage && !isDirty)}
                     onClick={generateAllDocuments}
                 >
                     {loading ? 'Generating...' :
-                     isCompletePackage ? '✓ All Generated' :
-                     'Generate All Documents'}
+                        (isCompletePackage && !isDirty) ? '✓ All Generated' :
+                            isCompletePackage ? '↻ Regenerate All' : 'Generate All Documents'}
                 </button>
             </>
         );
         return () => setHeaderActions(null);
-    }, [loading, data, generated, isCompletePackage]);
+    }, [loading, data, generated, isCompletePackage, isDirty]);
 
     const handleAddField = (section: keyof ResumeData) => {
         setData(prev => ({
             ...prev,
             [section]: [...(prev[section] as any[]), { key: '', value: '' }],
         }));
+        setIsDirty(true);
     };
 
     const handleRemoveField = (section: keyof ResumeData, index: number) => {
@@ -162,6 +168,7 @@ export const ResumeMakerApp: React.FC = () => {
             ...prev,
             [section]: (prev[section] as any[]).filter((_, i) => i !== index),
         }));
+        setIsDirty(true);
     };
 
     const handleChangeField = (section: keyof ResumeData, index: number, field: string, value: string) => {
@@ -170,6 +177,7 @@ export const ResumeMakerApp: React.FC = () => {
             newSection[index] = { ...newSection[index], [field]: value };
             return { ...prev, [section]: newSection };
         });
+        setIsDirty(true);
     };
 
     const handleAddObject = (section: 'work_history' | 'education' | 'personal_projects') => {
@@ -182,6 +190,7 @@ export const ResumeMakerApp: React.FC = () => {
             ...prev,
             [section]: [...prev[section], templates[section]],
         }));
+        setIsDirty(true);
     };
 
     const handleChangeObject = (section: 'work_history' | 'education' | 'personal_projects', index: number, field: string, value: string) => {
@@ -190,6 +199,7 @@ export const ResumeMakerApp: React.FC = () => {
             newSection[index] = { ...newSection[index], [field]: value };
             return { ...prev, [section]: newSection };
         });
+        setIsDirty(true);
     };
 
     const generate = async (type: 'generate-ats' | 'generate-cover-letter' | 'generate-sop', switchTab: boolean = true) => {
@@ -283,7 +293,7 @@ export const ResumeMakerApp: React.FC = () => {
                 <input
                     type="text"
                     value={data.name}
-                    onChange={e => setData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={e => { setData(prev => ({ ...prev, name: e.target.value })); setIsDirty(true); }}
                     placeholder="e.g. John Doe"
                     style={{ width: '100%' }}
                 />
@@ -370,7 +380,7 @@ export const ResumeMakerApp: React.FC = () => {
                 <label>Job Context (Target Role/Company)</label>
                 <textarea
                     value={data.cover_letter_para}
-                    onChange={e => setData(prev => ({ ...prev, cover_letter_para: e.target.value }))}
+                    onChange={e => { setData(prev => ({ ...prev, cover_letter_para: e.target.value })); setIsDirty(true); }}
                     placeholder="Provide specific context to help AI customize your documents..."
                     style={{ width: '100%', minHeight: '120px' }}
                 />
@@ -437,8 +447,8 @@ export const ResumeMakerApp: React.FC = () => {
                                     </select>
                                 </div>
                             )}
-                            <button 
-                                className="secondary-btn" 
+                            <button
+                                className="secondary-btn"
                                 onClick={() => setPreviewMode(!previewMode)}
                                 style={{ marginLeft: 'auto' }}
                             >
@@ -465,7 +475,7 @@ export const ResumeMakerApp: React.FC = () => {
                                 </>
                             ) : (
                                 <textarea
-                                    value={activeTab === 'ats' 
+                                    value={activeTab === 'ats'
                                         ? JSON.stringify(generated[activeTab], null, 2)
                                         : (generated[activeTab]?.content || '')
                                     }
@@ -479,14 +489,14 @@ export const ResumeMakerApp: React.FC = () => {
                                             }
                                         } else {
                                             // For cover letter and SOP, update content directly
-                                            setGenerated(prev => ({ 
-                                                ...prev, 
-                                                [activeTab]: { ...prev[activeTab], content: e.target.value } 
+                                            setGenerated(prev => ({
+                                                ...prev,
+                                                [activeTab]: { ...prev[activeTab], content: e.target.value }
                                             }));
                                         }
                                     }}
                                     className="output-editor card"
-                                    style={{ 
+                                    style={{
                                         width: '100%',
                                         flex: 1,
                                         minHeight: 0,

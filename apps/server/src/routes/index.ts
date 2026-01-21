@@ -10,6 +10,9 @@ import invitationRoutes from "./invitationRoutes.js";
 import userRoutes from "./user.routes.js";
 import resumeRoutes from "./resumeRoutes.js";
 import persistenceRoutes from "./persistenceRoutes.js";
+import apiKeysRoutes from "./apiKeysRoutes.js";
+import aiRoutes from "./aiRoutes.js";
+import unlockRoutes from "./unlockRoutes.js";
 
 console.log('🔧 All route modules imported');
 
@@ -23,6 +26,9 @@ apiRouter.use("/invitation", invitationRoutes);
 apiRouter.use("/user", userRoutes);
 apiRouter.use("/resume", resumeRoutes);
 apiRouter.use("/persistence", persistenceRoutes);
+apiRouter.use("/api-keys", apiKeysRoutes);
+apiRouter.use("/ai", aiRoutes);
+apiRouter.use("/unlock", unlockRoutes);
 console.log('✅ All routes mounted');
 
 

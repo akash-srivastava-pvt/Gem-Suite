@@ -3,7 +3,6 @@ const API_BASE = '/api/v1/user';
 export interface UserStatus {
     agreed: boolean;
     name?: string;
-    geminiVersion?: '2' | '3';
 }
 
 export interface LogEntry {
@@ -46,14 +45,5 @@ export const userService = {
         return res.success;
     },
 
-    updateGeminiVersion: async (version: '2' | '3'): Promise<boolean> => {
-        const response = await fetch(`${API_BASE}/gemini-version`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version }),
-        });
-        if (!response.ok) throw new Error('Failed to update Gemini version');
-        const res = await response.json();
-        return res.success;
-    }
+
 };

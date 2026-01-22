@@ -27,7 +27,7 @@ const HomeView: React.FC<Props> = ({ apps, onSelectApp, unlockStatus }) => {
         <div style={styles.container}>
             <div style={styles.content}>
                 <div style={styles.headerArea}>
-                    <h1 style={styles.heading}>Gem Desktop</h1>
+                    <h1 style={styles.heading}>Gem Suite</h1>
                     <p style={styles.subheading}>
                         {getSubheading()}
                     </p>

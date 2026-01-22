@@ -1,0 +1,73 @@
+/**
+ * Design Agent for Invitation Maker
+ */
+
+import { Agent } from '../../orchestration/types.js';
+import { mcpServer } from '../../mcp/mcpServer.js';
+import { AiProxyService } from '../../ai/ai-proxy.service.js';
+import { buildInvitationPrompt } from '../wedding.invitation.agent.js';
+import { buildEventInvitationPrompt } from '../event.invitation.agent.js';
+import { buildGreetingInvitationPrompt } from '../greeting.invitation.agent.js';
+
+export const DesignAgent: Agent = {
+  id: 'invitation-design-agent',
+  name: 'Invitation Design Agent',
+  description: 'Generates invitation designs with cultural and design context',
+  execute: async (input: any, context?: any) => {
+    const { data, theme } = input;
+
+    // Get design resources from MCP
+    const culturalPatterns = await mcpServer.executeTool('design_resources', {
+      action: 'get_cultural_patterns',
+      religion: data.religion
+    });
+
+    const designTemplates = await mcpServer.executeTool('design_resources', {
+      action: 'get_design_templates',
+      theme: theme || 'wedding'
+    });
+
+    const colorScheme = await mcpServer.executeTool('design_resources', {
+      action: 'get_color_scheme',
+      religion: data.religion,
+      theme: theme || 'wedding'
+    });
+
+    // Choose appropriate prompt builder based on theme
+    const basePrompt = theme === 'event'
+      ? buildEventInvitationPrompt(data)
+      : theme === 'greetings'
+        ? buildGreetingInvitationPrompt(data)
+        : buildInvitationPrompt(data);
+
+    const enhancedPrompt = `
+${basePrompt}
+
+Design Context:
+- Cultural Motifs: ${culturalPatterns.motifs.join(', ')}
+- Design Elements: ${designTemplates.elements.join(', ')}
+- Color Scheme: ${colorScheme.description}
+- Primary Colors: ${colorScheme.primary.join(', ')}
+- Layout Style: ${designTemplates.layout}
+
+Follow these design guidelines:
+${designTemplates.recommendations.join('\n')}
+    `;
+
+    const response = await AiProxyService.execute({
+      appId: 'invitation',
+      modality: 'image',
+      payload: { prompt: enhancedPrompt },
+      trackUsage: input.trackUsage
+    });
+
+    return {
+      ...response,
+      designContext: {
+        culturalPatterns,
+        designTemplates,
+        colorScheme
+      }
+    };
+  }
+};

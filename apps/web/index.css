@@ -1,0 +1,10 @@
+/* Ensure the draggable area doesn't have listeners that conflict with JS */
+.titlebar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* Ensure buttons inside the draggable area are NOT draggable */
+.titlebar-button {
+  -webkit-app-region: no-drag;
+}

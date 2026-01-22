@@ -1,4 +1,4 @@
-# Aryavarta Gem Suite - Project Structure Documentation
+# Gem Suite - Project Structure Documentation
 
 ## Root Directory Structure
 
@@ -219,8 +219,8 @@ apps/web/
 │   │   │   │   └── 📄 useThrottle.ts # Performance optimization
 │   │   │   ├── 📁 services/         # Editor API integration
 │   │   │   │   └── 📄 textEditorService.ts # Backend communication
-│   │   │   ├── 📁 styles/           # Editor styling
-│   │   │   │   └── 📄 editor.css    # Editor-specific CSS
+│   │   │   ├── 📁 styles/           # Editor-specific design system
+│   │   │   │   └── 📄 editor.css    # Premium typography and theme variables
 │   │   │   └── 📄 index.tsx         # Main text editor component
 │   │   ├── 📁 TripPlannerApp/       # Gem Musafir (Trip Planner)
 │   │   │   ├── 📁 components/       # Trip planning components

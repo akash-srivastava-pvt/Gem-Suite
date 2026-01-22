@@ -22,13 +22,13 @@ const Shell: React.FC<Props> = ({ apps }) => {
             try {
                 const statusRes = await unlockService.getStatus();
                 if (mounted) {
-                    setUnlockStatus(statusRes.data || { unlocked: false, hasActiveApiKey: false, acceptedAgreement: true });
+                    setUnlockStatus(statusRes.data || { unlocked: false, hasActiveApiKey: false, acceptedAgreement: false });
                 }
             } catch (err) {
                 console.error("Unlock status check failed:", err);
                 if (mounted) {
-                    // Fallback: allow access to profile for configuration
-                    setUnlockStatus({ unlocked: false, hasActiveApiKey: false, acceptedAgreement: true });
+                    // Fallback: assume agreement NOT accepted to be safe
+                    setUnlockStatus({ unlocked: false, hasActiveApiKey: false, acceptedAgreement: false });
                 }
             } finally {
                 if (mounted) {
@@ -41,7 +41,8 @@ const Shell: React.FC<Props> = ({ apps }) => {
         const timeoutId = setTimeout(() => {
             if (mounted && loading) {
                 console.warn('Unlock check timeout, proceeding with fallback');
-                setUnlockStatus({ unlocked: false, hasActiveApiKey: false, acceptedAgreement: true });
+                // Security: Default to false if we cannot verify
+                setUnlockStatus({ unlocked: false, hasActiveApiKey: false, acceptedAgreement: false });
                 setLoading(false);
             }
         }, 3000);

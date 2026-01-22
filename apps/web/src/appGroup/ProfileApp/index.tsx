@@ -56,23 +56,35 @@ export const ProfileApp = () => {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 5000);
-        return () => clearInterval(interval);
-    }, []);
+        // Only poll if user is logged in and not in the process of deleting
+        let interval: NodeJS.Timeout;
+        if (status?.agreed && !deleting) {
+            interval = setInterval(fetchData, 5000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [status?.agreed, deleting]);
 
     const handleDeleteAll = async () => {
-        if (!window.confirm("Are you sure you want to delete all personal data? This action is IRREVERSIBLE. Logs will be preserved for audit purposes.")) {
+        if (!window.confirm("CRITICAL ACTION: This will PERMANENTLY delete all profile data, saved items, AI cache, and configuration. The app will restart in a clean state. Are you sure?")) {
             return;
         }
 
         setDeleting(true);
         try {
+            // Clear server-side database items
             await userService.deleteData();
-            await fetchData();
+
+            // Clear all client-side storage (AI Cache, Form Persistence, etc.)
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // Skip fetchData() and reload immediately for a clean start
             window.location.reload();
         } catch (err) {
-            alert("Failed to delete data");
-        } finally {
+            console.error(err);
+            alert("An error occurred during reset. Please manually refresh the application.");
             setDeleting(false);
         }
     };
@@ -122,16 +134,26 @@ export const ProfileApp = () => {
                     <button
                         className={activeTab === 'overview' ? 'primary-btn' : 'secondary-btn'}
                         onClick={() => setActiveTab('overview')}
+                        disabled={deleting}
                     >
                         Overview
                     </button>
                     <button
                         className={activeTab === 'api-manager' ? 'primary-btn' : 'secondary-btn'}
                         onClick={() => setActiveTab('api-manager')}
+                        disabled={deleting}
                     >
                         API Manager
                     </button>
                 </div>
+
+                {deleting && (
+                    <div style={styles.deletingOverlay}>
+                        <div className="spinning-loader" style={{ width: '40px', height: '40px' }}></div>
+                        <p style={{ marginTop: '16px', fontWeight: 600 }}>Purging Workspace Data...</p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>This will take a moment. The app will restart shortly.</p>
+                    </div>
+                )}
 
                 {activeTab === 'api-manager' ? (
                     <ApiManager onApiKeyAdded={handleApiKeyChange} />
@@ -422,6 +444,21 @@ const styles = {
         color: 'var(--text-secondary)',
         marginBottom: '24px',
         lineHeight: 1.6,
+    },
+    deletingOverlay: {
+        position: 'fixed' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        zIndex: 9999,
+        textAlign: 'center' as const,
+        backdropFilter: 'blur(4px)',
     },
 
     // Usage Insights Dashboard Styles

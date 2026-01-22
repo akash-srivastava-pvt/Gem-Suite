@@ -47,7 +47,7 @@ const HomeView: React.FC<Props> = ({ apps, onSelectApp, unlockStatus }) => {
                 </div>
             </div>
             <div style={styles.footer}>
-                Aryavarta Labs © 2026 • Private Beta v1.0
+                Gem Suite © 2026 • Private Beta v1.0
             </div>
         </div>
     );

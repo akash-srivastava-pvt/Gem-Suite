@@ -245,25 +245,23 @@ export class SaveService {
       const allApps = ['texteditor', 'tripplanner', 'invitation', 'resumemaker'];
 
       const rows = db.query(`
-        SELECT
-          app_name,
-          SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
-          SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
-          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
-        FROM usage_metrics
-        GROUP BY app_name
-        ORDER BY app_name
+        SELECT 
+          m.app_name,
+          SUM(CASE WHEN m.event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
+          SUM(CASE WHEN m.event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN m.event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors,
+          (SELECT COUNT(*) FROM saved_artifacts s WHERE s.app_name = m.app_name) as current_saved_count
+        FROM usage_metrics m
+        GROUP BY m.app_name
+        ORDER BY m.app_name
       `);
-
-      // console.log('📊 Raw metrics rows from DB:', rows);
 
       const metricsMap = new Map();
       rows.forEach((row: any) => {
         metricsMap.set(row.app_name, {
           appName: row.app_name as string,
           apiHits: row.api_hits as number,
-          savedArtifacts: row.saved_artifacts as number,
+          savedArtifacts: row.current_saved_count as number,
           generatedArtifacts: row.generated_artifacts as number,
           apiErrors: row.api_errors as number
         });

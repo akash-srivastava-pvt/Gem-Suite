@@ -1,8 +1,8 @@
-# Aryavarta Gem Suite - Technical Architecture Documentation
+# Gem Suite - Technical Architecture Documentation
 
 ## Overview
 
-Aryavarta Gem Suite is a production-grade desktop AI ecosystem built on a **Distributed Desktop Architecture** pattern. It leverages Gemini 3 AI capabilities through a sophisticated multi-layered framework designed for extensibility, performance, and local-first data management.
+Gem Suite is a production-grade desktop AI ecosystem built on a **Distributed Desktop Architecture** pattern. It leverages Gemini 3 AI capabilities through a sophisticated multi-layered framework designed for extensibility, performance, and local-first data management.
 
 ## Core Architecture
 
@@ -28,7 +28,8 @@ Aryavarta Gem Suite is a production-grade desktop AI ecosystem built on a **Dist
 - **Framework**: React 18 with TypeScript
 - **Build Tool**: Vite 5.0.8
 - **Routing**: React Router DOM 7.11.0
-- **Styling**: CSS-in-JS with glassmorphism theme system
+- **Styling**: Unified CSS Design System with glassmorphism and premium theme tokens
+- **Typography**: Multi-font system (Inter for UI, Lora for content)
 - **Maps**: Leaflet with React-Leaflet integration
 - **PDF Generation**: html2pdf.js for document exports
 

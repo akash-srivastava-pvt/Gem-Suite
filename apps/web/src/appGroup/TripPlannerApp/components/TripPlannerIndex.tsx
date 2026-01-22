@@ -14,6 +14,7 @@ const APP_NAME = "trip-planner";
 
 export const TripPlannerIndex = () => {
   const { setHeaderActions } = useShell();
+  const [formData, setFormData] = useState<any>(null);
   const [tripData, setTripData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,16 @@ export const TripPlannerIndex = () => {
   const handleDataLoaded = (artifact: SavedArtifact) => {
     try {
       const parsedData = JSON.parse(artifact.data);
-      setTripData(parsedData);
+
+      // Handle the new combined format or legacy format
+      if (parsedData.formData && parsedData.tripData) {
+        setFormData(parsedData.formData);
+        setTripData(parsedData.tripData);
+      } else {
+        // Fallback for legacy data (though it won't populate the form)
+        setTripData(parsedData);
+      }
+
       setError(null);
     } catch (err) {
       console.error('Failed to parse trip data:', err);
@@ -31,6 +41,7 @@ export const TripPlannerIndex = () => {
 
   const handleCreateNew = () => {
     setTripData(null);
+    setFormData(null);
     setError(null);
   };
 
@@ -40,7 +51,7 @@ export const TripPlannerIndex = () => {
       <>
         <SaveControls
           appName="tripplanner"
-          currentData={tripData ? JSON.stringify(tripData) : ''}
+          currentData={tripData ? JSON.stringify({ formData, tripData }) : ''}
           dataType="trip"
           onDataLoaded={handleDataLoaded}
           onCreateNew={handleCreateNew}
@@ -48,17 +59,18 @@ export const TripPlannerIndex = () => {
       </>
     );
     return () => setHeaderActions(null);
-  }, [tripData]);
+  }, [tripData, formData]);
 
   const handleGenerateTrip = async (payload: any) => {
+    setFormData(payload); // Store the payload that generated this trip
     try {
       setLoading(true);
       setError(null);
-      
+
       // Check cache first
       const tripPayload = buildTripPayload(payload);
       const cached = aiCache.get<any>(APP_NAME, tripPayload);
-      
+
       if (cached) {
         setTripData(cached);
         setLoading(false);
@@ -66,10 +78,10 @@ export const TripPlannerIndex = () => {
       }
 
       const response = await tripService.query(payload);
-      
+
       // Cache the result
       aiCache.set(APP_NAME, tripPayload, response);
-      
+
       setTripData(response);
     } catch (err: any) {
       console.error(err);
@@ -81,7 +93,11 @@ export const TripPlannerIndex = () => {
 
   const LeftPanel = (
     <div style={{ padding: '2rem', height: '100%', background: 'var(--surface)' }}>
-      <TripPlanForm onSubmit={handleGenerateTrip} loading={loading} />
+      <TripPlanForm
+        onSubmit={handleGenerateTrip}
+        loading={loading}
+        initialData={formData}
+      />
     </div>
   );
 

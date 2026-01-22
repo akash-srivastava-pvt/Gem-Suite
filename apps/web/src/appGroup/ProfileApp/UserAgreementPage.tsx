@@ -42,7 +42,7 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
                         <li><strong>Data Residency:</strong> All data is stored locally on this machine. You are responsible for its backup and security.</li>
                         <li><strong>AI Fallibility:</strong> AI outputs may be inaccurate or biased. Always human-verify critical information before use.</li>
                         <li><strong>Prohibited Use:</strong> You agree not to use this tool for generating harmful, illegal, or deceptive content.</li>
-                        <li><strong>Liability:</strong> Aryavarta Labs is not liable for any direct or indirect damages arising from the use of generated data.</li>
+                        <li><strong>Liability:</strong> Gem Suite is not liable for any direct or indirect damages arising from the use of generated data.</li>
                         <li><strong>API Usage:</strong> API keys are stored locally but transmitted securely to Google's servers for inference only.</li>
                     </ul>
                 </div>
@@ -64,6 +64,7 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
                         onChange={(e) => setName(e.target.value)}
                         style={{ width: '100%' }}
                         disabled={loading}
+                        autoFocus
                     />
 
                     {error && <p style={styles.error}>{error}</p>}
@@ -72,7 +73,12 @@ const UserAgreementPage: React.FC<Props> = ({ onAgreed }) => {
                         type="submit"
                         className="primary-btn"
                         disabled={!agreed || !name.trim() || loading}
-                        style={{ width: '100%', padding: '0.8rem' }}
+                        style={{
+                            width: '100%',
+                            padding: '0.8rem',
+                            opacity: loading ? 0.7 : 1,
+                            cursor: loading ? 'not-allowed' : 'pointer'
+                        }}
                     >
                         {loading ? 'Finalising Setup...' : 'Accept & Initialise Workspace'}
                     </button>

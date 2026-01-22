@@ -269,7 +269,7 @@ var DatabaseModel = class {
               console.log("\u2705 Removed legacy activate table");
             }
           }
-          this.saveToDisk();
+          this.save();
         } catch (err) {
           console.warn("DB initialization migration note:", err.message);
         }
@@ -344,7 +344,7 @@ var DatabaseModel = class {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
         console.log("\u2705 Indexes created");
-        this.saveToDisk();
+        this.save();
       }
       console.log("\u2705 Database initialized successfully");
     } catch (err) {
@@ -352,7 +352,7 @@ var DatabaseModel = class {
       throw err;
     }
   }
-  saveToDisk() {
+  save() {
     if (!this.db) {
       console.warn("Database save skipped: not initialized");
       return;
@@ -378,12 +378,21 @@ var DatabaseModel = class {
     stmt.free();
     return results;
   }
-  execute(sql, params = []) {
+  /**
+   * Execute SQL without saving to disk (useful for batch operations/transactions)
+   */
+  run(sql, params = []) {
     if (!this.db) {
       throw new Error("Database not initialized. Ensure db.init() is called before usage.");
     }
-    const result = this.db.run(sql, params);
-    this.saveToDisk();
+    return this.db.run(sql, params);
+  }
+  /**
+   * Execute SQL and save to disk immediately
+   */
+  execute(sql, params = []) {
+    const result = this.run(sql, params);
+    this.save();
     return result;
   }
 };
@@ -2113,22 +2122,22 @@ var SaveService = class {
       console.log("\u{1F4CA} Server: Fetching usage metrics from database...");
       const allApps = ["texteditor", "tripplanner", "invitation", "resumemaker"];
       const rows = db.query(`
-        SELECT
-          app_name,
-          SUM(CASE WHEN event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
-          SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) as saved_artifacts,
-          SUM(CASE WHEN event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
-          SUM(CASE WHEN event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors
-        FROM usage_metrics
-        GROUP BY app_name
-        ORDER BY app_name
+        SELECT 
+          m.app_name,
+          SUM(CASE WHEN m.event_type = 'api_hit' THEN 1 ELSE 0 END) as api_hits,
+          SUM(CASE WHEN m.event_type = 'generate' THEN 1 ELSE 0 END) as generated_artifacts,
+          SUM(CASE WHEN m.event_type = 'api_error' THEN 1 ELSE 0 END) as api_errors,
+          (SELECT COUNT(*) FROM saved_artifacts s WHERE s.app_name = m.app_name) as current_saved_count
+        FROM usage_metrics m
+        GROUP BY m.app_name
+        ORDER BY m.app_name
       `);
       const metricsMap = /* @__PURE__ */ new Map();
       rows.forEach((row) => {
         metricsMap.set(row.app_name, {
           appName: row.app_name,
           apiHits: row.api_hits,
-          savedArtifacts: row.saved_artifacts,
+          savedArtifacts: row.current_saved_count,
           generatedArtifacts: row.generated_artifacts,
           apiErrors: row.api_errors
         });
@@ -2677,20 +2686,28 @@ var UserModel = {
   },
   deleteData: () => {
     try {
-      db.execute("BEGIN TRANSACTION");
-      db.execute("DELETE FROM users");
-      db.execute("DELETE FROM resume");
-      db.execute("DELETE FROM user_api_keys");
-      db.execute("DELETE FROM usage_metrics");
-      db.execute("DELETE FROM saved_artifacts");
+      db.run("BEGIN TRANSACTION");
+      db.run("DELETE FROM users");
+      db.run("DELETE FROM resume");
+      db.run("DELETE FROM user_api_keys");
+      db.run("DELETE FROM usage_metrics");
+      db.run("DELETE FROM saved_artifacts");
+      db.run("DELETE FROM logger");
       try {
-        db.execute("DELETE FROM activate");
+        db.run("DELETE FROM activate");
       } catch (e) {
       }
-      db.execute("INSERT INTO logger (event) VALUES (?)", ["All user data deleted"]);
-      db.execute("COMMIT");
+      db.run("INSERT INTO logger (event) VALUES (?)", ["\u26A0\uFE0F COMPLETE FACTORY RESET PERFOMED"]);
+      db.run("COMMIT");
+      db.save();
+      try {
+        db.run("VACUUM");
+        db.save();
+      } catch (vErr) {
+        console.warn("VACUUM failed (not critical):", vErr);
+      }
     } catch (error) {
-      db.execute("ROLLBACK");
+      db.run("ROLLBACK");
       throw error;
     }
   },
@@ -4189,7 +4206,15 @@ var ApiKeysController = {
   delete: async (req, res) => {
     try {
       const { id } = req.params;
+      const keyToDelete = db.query("SELECT is_default FROM user_api_keys WHERE id = ?", [id]);
+      const wasDefault = keyToDelete[0]?.is_default === 1;
       await db.execute("DELETE FROM user_api_keys WHERE id = ? AND user_id = 1", [id]);
+      if (wasDefault) {
+        const remainingKeys = db.query("SELECT id FROM user_api_keys WHERE user_id = 1 ORDER BY created_at DESC LIMIT 1");
+        if (remainingKeys.length > 0) {
+          await db.execute("UPDATE user_api_keys SET is_default = 1 WHERE id = ?", [remainingKeys[0].id]);
+        }
+      }
       res.json({ success: true, message: "API key deleted successfully" });
     } catch (error) {
       console.error("[API_KEYS][DELETE]", error);

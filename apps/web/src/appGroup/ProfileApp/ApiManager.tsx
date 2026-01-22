@@ -19,6 +19,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
     selectedImageModel: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
 
@@ -114,6 +115,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this API key?')) return;
+    setIsDeleting(true);
     try {
       await apiManagerService.deleteApiKey(id);
       if (onApiKeyAdded) {
@@ -123,8 +125,12 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
       }
     } catch (error: any) {
       alert(error.message || 'Failed to delete API key');
+    } finally {
+      if (mounted.current) setIsDeleting(false);
     }
   };
+
+  const isBusy = submitting || isDeleting;
 
   const selectedProvider = providers.find(p => p.providerId === formData.provider);
   const selectedTier = selectedProvider?.tiers.find(t => t.tierId === formData.tier);
@@ -139,8 +145,15 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
         <h2>API Key Management</h2>
         <button
           className="primary-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            if (!showForm) {
+              setFormData({ provider: '', tier: '', apiKey: '', selectedTextModel: '', selectedImageModel: '' });
+              setError(null);
+            }
+            setShowForm(!showForm);
+          }}
           style={styles.addButton}
+          disabled={isBusy}
         >
           {showForm ? 'Cancel' : '+ Add API Key'}
         </button>
@@ -159,6 +172,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                   setError(null);
                 }}
                 required
+                disabled={isBusy}
               >
                 <option value="">Select Provider</option>
                 {providers.map(p => (
@@ -173,7 +187,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                 value={formData.tier}
                 onChange={(e) => setFormData({ ...formData, tier: e.target.value, selectedTextModel: '', selectedImageModel: '' })}
                 required
-                disabled={!formData.provider}
+                disabled={!formData.provider || isBusy}
               >
                 <option value="">Select Tier</option>
                 {selectedProvider?.tiers.map(t => (
@@ -193,6 +207,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                 }}
                 placeholder="Enter your API key"
                 required
+                disabled={isBusy}
               />
             </div>
 
@@ -202,6 +217,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                 <select
                   value={formData.selectedTextModel}
                   onChange={(e) => setFormData({ ...formData, selectedTextModel: e.target.value })}
+                  disabled={isBusy}
                 >
                   <option value="">Select Text Model</option>
                   {textModels.map(m => (
@@ -217,6 +233,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                 <select
                   value={formData.selectedImageModel}
                   onChange={(e) => setFormData({ ...formData, selectedImageModel: e.target.value })}
+                  disabled={isBusy}
                 >
                   <option value="">Select Image Model</option>
                   {imageModels.map(m => (
@@ -227,7 +244,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
             )}
           </div>
 
-          <button type="submit" className="primary-btn" disabled={submitting}>
+          <button type="submit" className="primary-btn" disabled={isBusy}>
             {submitting ? 'Saving...' : 'Save API Key'}
           </button>
         </form>
@@ -237,6 +254,20 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
         {apiKeys.length === 0 ? (
           <div style={styles.emptyState}>
             <p>No API keys configured. Add your first API key to unlock all GEM applications.</p>
+            {!showForm && (
+              <button
+                className="primary-btn"
+                onClick={() => {
+                  setFormData({ provider: '', tier: '', apiKey: '', selectedTextModel: '', selectedImageModel: '' });
+                  setError(null);
+                  setShowForm(true);
+                }}
+                style={{ marginTop: '16px' }}
+                disabled={isBusy}
+              >
+                + Add Now
+              </button>
+            )}
           </div>
         ) : (
           <div style={styles.table}>
@@ -277,6 +308,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                     value={key.selectedImageModel || ''}
                     onChange={(e) => handleUpdateModels(key.id, key.selectedTextModel || '', e.target.value)}
                     style={styles.modelSelect}
+                    disabled={isBusy}
                   >
                     <option value="">Select Image Model</option>
                     {keyImageModels.map(m => (
@@ -304,6 +336,7 @@ export const ApiManager: React.FC<ApiManagerProps> = ({ onApiKeyAdded }) => {
                       className="secondary-btn"
                       onClick={() => handleDelete(key.id)}
                       style={{ ...styles.actionBtn, color: 'var(--error)' }}
+                      disabled={isBusy}
                     >
                       Delete
                     </button>

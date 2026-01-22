@@ -14,10 +14,17 @@ const defaultFormData = {
   cities: [] as CitySelection[]
 };
 
-export const TripPlanForm = ({ onSubmit, loading }: any) => {
+export const TripPlanForm = ({ onSubmit, loading, initialData }: any) => {
   // Load persisted form data
   const persistedData = formStorage.load<typeof defaultFormData>(APP_NAME, defaultFormData);
-  const [input, setInput] = useState<typeof defaultFormData>(persistedData);
+  const [input, setInput] = useState<typeof defaultFormData>(initialData || persistedData);
+
+  // Update input if initialData changes (e.g. on load)
+  useEffect(() => {
+    if (initialData) {
+      setInput(initialData);
+    }
+  }, [initialData]);
 
   // Persist form changes
   useEffect(() => {

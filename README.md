@@ -1,8 +1,8 @@
-# Aryavarta Gem Suite 💎
+# Gem Suite 💎
 
 **The Intelligence Laboratory of Connected AI Assistants.**
 
-Aryavarta Gem Suite is a premium, production-ready desktop ecosystem designed to bring the sophisticated reasoning of the **Gemini 3** ecosystem into your daily workflow. It is not just a single application, but a high-performance **Extensible AI Framework** hosting a collection of deep-purpose "Gem" applications.
+Gem Suite is a premium, production-ready desktop ecosystem designed to bring the sophisticated reasoning of the **Gemini 3** ecosystem into your daily workflow. It is not just a single application, but a high-performance **Extensible AI Framework** hosting a collection of deep-purpose "Gem" applications.
 
 ---
 
@@ -25,9 +25,9 @@ Your personal travel concierge that dreams up perfect itineraries so you don't h
 ### ✍️ Gem Likhit: The Intelligent AI Editor
 A next-generation writing environment that feels like a clean page but works like a genius collaborator.
 *   **Ghost Typing**: The AI predicts your next sentence in real-time, helping you flow through your writing.
-*   **Smart Selection Actions**: Highlight any text to instantly Rewrite, Translate, or Summarize it using built-in AI tools.
+*   **Premium Selection Menu**: A high-performance, glassmorphism-inspired action menu that lets you Rewrite, Translate, or Summarize selection with a single tap.
 *   **Drafting Commands**: Use "//@" commands to tell the AI to write entire paragraphs or drafts on your behalf.
-*   **Distraction-Free**: Premium typography and a sleek interface that keeps you focused on your craft.
+*   **Designer Typography**: Optimized for reading with Lora (Serif) and Inter (Sans), providing a distraction-free, editor-grade experience.
 
 ### 📝 Gem Vivarad: The ATS-Optimized Resume Maker
 A powerful assistant that transforms your raw experience into an ATS-friendly, professionally formatted resume.
@@ -91,4 +91,4 @@ npm run build    # Build packages
 npm run dev      # Start everything (Web, Server, Desktop)
 ```
 
-**Aryavarta Labs © 2026**
+**Gem Suite © 2026**

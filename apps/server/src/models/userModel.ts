@@ -27,27 +27,40 @@ export const UserModel = {
 
     deleteData: (): void => {
         try {
-            // Use a transaction for atomic deletion
-            db.execute('BEGIN TRANSACTION');
+            // No auto-save during this batch
+            db.run('BEGIN TRANSACTION');
 
-            db.execute('DELETE FROM users');
-            db.execute('DELETE FROM resume');
-            db.execute('DELETE FROM user_api_keys');
-            db.execute('DELETE FROM usage_metrics');
-            db.execute('DELETE FROM saved_artifacts');
+            // Deleting ALL tables for a complete reset
+            db.run('DELETE FROM users');
+            db.run('DELETE FROM resume');
+            db.run('DELETE FROM user_api_keys');
+            db.run('DELETE FROM usage_metrics');
+            db.run('DELETE FROM saved_artifacts');
+            db.run('DELETE FROM logger');
 
             // Try to delete legacy table if it exists
             try {
-                db.execute('DELETE FROM activate');
+                db.run('DELETE FROM activate');
             } catch (e) {
                 // Ignore error if table doesn't exist
             }
 
-            db.execute('INSERT INTO logger (event) VALUES (?)', ['All user data deleted']);
+            db.run('INSERT INTO logger (event) VALUES (?)', ['⚠️ COMPLETE FACTORY RESET PERFOMED']);
 
-            db.execute('COMMIT');
+            db.run('COMMIT');
+
+            // Save to disk ONCE after the batch
+            db.save();
+
+            // Reclaim space and defragment database file
+            try {
+                db.run('VACUUM');
+                db.save();
+            } catch (vErr) {
+                console.warn('VACUUM failed (not critical):', vErr);
+            }
         } catch (error) {
-            db.execute('ROLLBACK');
+            db.run('ROLLBACK');
             throw error;
         }
     },

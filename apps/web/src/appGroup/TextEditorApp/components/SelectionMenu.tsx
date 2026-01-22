@@ -44,36 +44,36 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({ selection, onConfi
     <div className="selection-menu">
       {/* 1. Main Options View */}
       {view === 'main' && (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <div style={styles.menuHeader}>
             AI WRITE ASSIST
           </div>
           <button className="menu-item" onClick={() => handleAction('rewrite')}>
-            <span style={{ fontSize: '16px' }}>✍️</span> Rewrite Selection
+            <span style={{ fontSize: '18px' }}>✍️</span> Rewrite Selection
           </button>
           <button className="menu-item" onClick={() => handleAction('grammar')}>
-            <span style={{ fontSize: '16px' }}>🪄</span> Fix Grammar & Style
+            <span style={{ fontSize: '18px' }}>🪄</span> Fix Grammar & Style
           </button>
           <button className="menu-item" onClick={() => setView('languages')}>
-            <span style={{ fontSize: '16px' }}>🌐</span> Translate Content...
+            <span style={{ fontSize: '18px' }}>🌐</span> Translate Content...
           </button>
           <button className="menu-item" onClick={() => handleAction('summarize')}>
-            <span style={{ fontSize: '16px' }}>📋</span> Summarize
+            <span style={{ fontSize: '18px' }}>📋</span> Summarize
           </button>
-          <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 8px' }} />
+          <div style={{ height: '1px', background: 'var(--border-color)', margin: '8px 4px' }} />
           <button className="menu-item" style={{ color: 'var(--error)' }} onClick={onClose}>
-            <span style={{ fontSize: '16px' }}>✕</span> Close Menu
+            <span style={{ fontSize: '18px' }}>✕</span> Close Menu
           </button>
         </div>
       )}
 
       {/* 2. Language Picker View */}
       {view === 'languages' && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <div style={styles.menuHeader}>
             SELECT TARGET LANGUAGE
           </div>
-          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '0 4px' }}>
+          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '0 4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {LANGUAGES.map((lang) => (
               <button
                 key={lang.value}
@@ -84,27 +84,27 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({ selection, onConfi
               </button>
             ))}
           </div>
-          <button className="menu-item" style={{ borderTop: '1px solid var(--border-color)', marginTop: '4px', justifyContent: 'center', opacity: 0.7 }} onClick={() => setView('main')}>
+          <button className="menu-item" style={{ borderTop: '1px solid var(--border-color)', marginTop: '8px', justifyContent: 'center', opacity: 0.8 }} onClick={() => setView('main')}>
             ← Back to Actions
           </button>
-        </>
+        </div>
       )}
 
       {/* 3. AI Result Preview View */}
       {view === 'preview' && (
-        <div style={{ padding: '12px' }}>
+        <div style={{ padding: '8px' }}>
           <div style={styles.menuHeader}>
             AI SUGGESTION
           </div>
           <div className="preview-overlay" style={{ fontSize: '15px', marginBottom: '16px', maxHeight: '200px' }}>
             {loading ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', padding: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', color: 'var(--text-secondary-color)', padding: '10px' }}>
                 <span className="spinning-loader" /> AI is drafting...
               </div>
             ) : preview}
           </div>
           {!loading && (
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 className="menu-item accept-btn"
                 style={{ flex: 1, justifyContent: 'center' }}
@@ -129,12 +129,14 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({ selection, onConfi
 
 const styles = {
   menuHeader: {
-    padding: '10px 16px',
-    fontSize: '10px',
+    padding: '12px 14px',
+    fontSize: '11px',
     fontWeight: 800,
-    color: 'var(--text-secondary)',
+    color: 'var(--text-secondary-color)',
     textTransform: 'uppercase' as const,
-    letterSpacing: '1.5px',
-    opacity: 0.8,
+    letterSpacing: '2px',
+    opacity: 0.9,
+    borderBottom: '1px solid var(--border-color)',
+    marginBottom: '8px',
   }
 };

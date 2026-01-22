@@ -161,7 +161,7 @@ class DatabaseModel {
             }
           }
 
-          this.saveToDisk();
+          this.save();
         } catch (err: any) {
           console.warn('DB initialization migration note:', err.message);
         }
@@ -244,7 +244,7 @@ class DatabaseModel {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
         console.log('✅ Indexes created');
 
-        this.saveToDisk();
+        this.save();
       }
 
       console.log('✅ Database initialized successfully');
@@ -255,7 +255,7 @@ class DatabaseModel {
     }
   }
 
-  private saveToDisk() {
+  public save() {
     if (!this.db) {
       console.warn('Database save skipped: not initialized');
       return;
@@ -285,12 +285,22 @@ class DatabaseModel {
     return results;
   }
 
-  execute(sql: string, params: any[] = []) {
+  /**
+   * Execute SQL without saving to disk (useful for batch operations/transactions)
+   */
+  run(sql: string, params: any[] = []) {
     if (!this.db) {
       throw new Error('Database not initialized. Ensure db.init() is called before usage.');
     }
-    const result = this.db.run(sql, params);
-    this.saveToDisk();
+    return this.db.run(sql, params);
+  }
+
+  /**
+   * Execute SQL and save to disk immediately
+   */
+  execute(sql: string, params: any[] = []) {
+    const result = this.run(sql, params);
+    this.save();
     return result;
   }
 }

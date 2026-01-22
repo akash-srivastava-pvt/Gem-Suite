@@ -1,5 +1,6 @@
 import React from "react";
 import { ShellApp } from "@gem/shared";
+import { ErrorBoundary } from "../components/ErrorBoundary.js";
 
 type Props = {
     apps: ShellApp[];
@@ -7,17 +8,19 @@ type Props = {
 };
 
 const ShellBody: React.FC<Props> = ({ apps, activeAppId }) => {
-    const activeApp = apps.find((a) => a.id === activeAppId);
+    const activeComponent = apps.find((a) => a.id === activeAppId);
 
-    if (!activeApp) {
+    if (!activeComponent) {
         return <div>Select an app</div>;
     }
 
-    const ActiveComponent = activeApp.component;
+    const ActiveComponent = activeComponent.component;
 
     return (
         <div style={styles.body}>
-            <ActiveComponent />
+            <ErrorBoundary appName={activeComponent.name} key={activeAppId}>
+                <ActiveComponent />
+            </ErrorBoundary>
         </div>
     );
 };

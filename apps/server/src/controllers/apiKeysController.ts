@@ -122,7 +122,20 @@ export const ApiKeysController = {
     try {
       const { id } = req.params;
 
+      // Check if we are deleting the default key
+      const keyToDelete = db.query<{ is_default: number }>('SELECT is_default FROM user_api_keys WHERE id = ?', [id]);
+      const wasDefault = keyToDelete[0]?.is_default === 1;
+
       await db.execute('DELETE FROM user_api_keys WHERE id = ? AND user_id = 1', [id]);
+
+      // If we deleted the default key, promote another one
+      if (wasDefault) {
+        const remainingKeys = db.query<{ id: number }>('SELECT id FROM user_api_keys WHERE user_id = 1 ORDER BY created_at DESC LIMIT 1');
+        if (remainingKeys.length > 0) {
+          await db.execute('UPDATE user_api_keys SET is_default = 1 WHERE id = ?', [remainingKeys[0].id]);
+        }
+      }
+
       res.json({ success: true, message: 'API key deleted successfully' });
     } catch (error) {
       console.error('[API_KEYS][DELETE]', error);

@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write  # required for checkout/push
+  contents: write
 
 jobs:
 # ------------------------------------------------------------
@@ -20,12 +20,12 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
 
     steps:
-      - name: Checkout source code
+      - name: Checkout source repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -68,7 +68,6 @@ jobs:
         with:
           repository: akash-srivastava-pvt/Apps
           token: ${{ secrets.RELEASE_PAT }}
-          ref: gh-pages
           path: repo-b
 
       - name: Download installer artifact
@@ -77,25 +76,36 @@ jobs:
           name: gemsuite-installer
           path: site/GemSuite/${{ needs.build-windows.outputs.version }}
 
-      - name: Copy installer to Repo B
-        run: |
-          mkdir -p repo-b/GemSuite/${{ needs.build-windows.outputs.version }}
-          cp -r site/GemSuite/${{ needs.build-windows.outputs.version }}/* repo-b/GemSuite/${{ needs.build-windows.outputs.version }}/
-
-      - name: Configure git
+      - name: Configure git identity
         run: |
           cd repo-b
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit & push to gh-pages
+      - name: Create or switch gh-pages branch
+        run: |
+          cd repo-b
+          if git show-ref --quiet refs/heads/gh-pages; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
+      - name: Copy installer files
+        run: |
+          cd repo-b
+          mkdir -p GemSuite/${{ needs.build-windows.outputs.version }}
+          cp -r ../../site/GemSuite/${{ needs.build-windows.outputs.version }}/* GemSuite/${{ needs.build-windows.outputs.version }}/
+
+      - name: Commit & push
         run: |
           cd repo-b
           git add GemSuite
           git commit -m "Release v${{ needs.build-windows.outputs.version }}" || echo "No changes to commit"
           git push origin gh-pages --force
 
-      - name: Output direct download URL
+      - name: Output download URL
         run: |
           VERSION=${{ needs.build-windows.outputs.version }}
           echo "--------------------------------------------------"

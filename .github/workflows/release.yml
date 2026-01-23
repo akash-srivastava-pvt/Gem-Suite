@@ -6,7 +6,8 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write   # Required for creating releases in source repo (optional if using PAT)
+  contents: read  # Source repo permissions
+  # The PAT will handle write permissions to Repo B
 
 jobs:
   build:
@@ -14,7 +15,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout source repo
+      # 1️⃣ Checkout source repo (Repo A)
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -46,18 +47,18 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
 
-      # 6️⃣ Upload artifact to separate repo (Repo B)
+      # 6️⃣ Upload artifact to Repo B
       - name: Upload Release to Binary Repo
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # Personal Access Token with write access to Repo B
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with repo access to Repo B
         run: |
           APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
           VERSION=${{ steps.get_version.outputs.VERSION }}
           ARTIFACT_PATH="apps/desktop/release/${APP_NAME}-${VERSION}-x64.exe"
 
-          echo "Creating release v$VERSION in repo B and uploading artifact..."
+          echo "Creating release v$VERSION in Repo B and uploading artifact..."
           gh release create "v$VERSION" "$ARTIFACT_PATH" \
-            --repo https://github.com/akash-srivastava-pvt/Apps/tree/main/GemSuite \
+            --repo akash-srivastava-pvt/Apps \
             --title "$APP_NAME v$VERSION" \
             --notes "Automated release from CI"
 
@@ -67,7 +68,7 @@ jobs:
         run: |
           APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
           VERSION=${{ steps.get_version.outputs.VERSION }}
-          REPO="https://github.com/akash-srivastava-pvt/Apps/tree/main/GemSuite"
+          REPO="akash-srivastava-pvt/Apps"
           echo "--------------------------------------------------"
           echo "Download URL:"
           echo "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"

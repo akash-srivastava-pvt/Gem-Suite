@@ -40,31 +40,22 @@ jobs:
       # 5️⃣ Get version and app name
       - name: Get Version
         id: get_version
+        shell: pwsh
         run: |
-          $version = (Get-Content ./apps/desktop/package.json | ConvertFrom-Json).version
-          Write-Host "VERSION=$version" >> $env:GITHUB_OUTPUT
+          $package = Get-Content ./apps/desktop/package.json | ConvertFrom-Json
+          Write-Host "VERSION=$($package.version)" >> $env:GITHUB_OUTPUT
           Write-Host "APP_NAME=GemSuite" >> $env:GITHUB_OUTPUT
 
       # 6️⃣ Upload artifact to separate repo (Repo B)
       - name: Upload Release to Binary Repo
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # MUST be GH_TOKEN for gh CLI
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}  # MUST be GH_TOKEN for gh CLI
         run: |
           $appName = "${{ steps.get_version.outputs.APP_NAME }}"
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $artifactPath = "apps/desktop/release/$appName-$version-x64.exe"
-          $repo = "akash-srivastava-pvt/Apps"  # Repo B where artifact will be released
+          $repo = "akash-srivastava-pvt/Apps"  # Repo B
 
-          Write-Host "Creating release v$version in $repo and uploading artifact..."
-          gh release create "v$version" $artifactPath --repo $repo --title "$appName v$version" --notes "Automated release from CI"
-
-      # 7️⃣ Output download URL
-      - name: Output Download URL
-        run: |
-          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $repo = "akash-srivastava-pvt/Apps"
-          Write-Host "--------------------------------------------------"
-          Write-Host "Download URL:"
-          Write-Host "https://github.com/$repo/releases/download/v$version/$appName-$version-x64.exe"
-          Write-Host "--------------------------------------------------"
+          if (-Not (Test-Path $artifactPath)) {
+            Write-Error "

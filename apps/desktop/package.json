@@ -5,7 +5,7 @@
   "scripts": {
     "start": "electron .",
     "build": "tsc",
-    "dist": "electron-builder"
+    "dist": "electron-builder --publish=never"
   },
   "repository": {
     "type": "git",

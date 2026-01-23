@@ -32,7 +32,6 @@
     "typescript": "latest"
   },
   "build": {
-    "publish": "never",
     "appId": "com.gemsuite.app",
     "productName": "GemSuite",
     "asar": true,

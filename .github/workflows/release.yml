@@ -6,7 +6,7 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write  # Needed if creating releases in source repo (optional here)
+  contents: write   # Optional if using a PAT
 
 jobs:
   build:
@@ -14,31 +14,29 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout source repo
-      - name: Checkout Code
+      - name: Checkout Source Repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
           cache: 'npm'
 
-      # 3️⃣ Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      # 4️⃣ Build Electron app
       - name: Build Electron App
         run: node scripts/dist.js
         env:
           NODE_ENV: production
 
-      # 5️⃣ Get version and app name
-      - name: Get Version
+      - name: List Build Artifacts
+        run: dir apps\desktop\release
+
+      - name: Get Version & App Name
         id: get_version
         shell: bash
         run: |
@@ -46,37 +44,28 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
 
-      # 6️⃣ Install GitHub CLI
-      - name: Install GitHub CLI
-        run: |
-          choco install gh -y
-          gh --version
-
-      # 7️⃣ Create release and upload artifact to Repo B
       - name: Upload Release to Binary Repo
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with write access to Repo B
-        shell: pwsh
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}  # PAT with repo write access
         run: |
-          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $artifactPath = "apps/desktop/release/$appName-$version-x64.exe"
-          $repoB = "akash-srivastava-pvt/Apps" # Replace with Repo B full name
+          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          ARTIFACT="apps/desktop/release/${APP_NAME}-Setup-${VERSION}.exe"
+          REPO_B="akash-srivastava-pvt/Apps"
 
-          Write-Host "Creating release v$version in $repoB and uploading artifact..."
-          gh release create "v$version" $artifactPath `
-            --repo $repoB `
-            --title "$appName v$version" `
+          echo "Creating release v$VERSION in $REPO_B..."
+          gh release create "v$VERSION" "$ARTIFACT" \
+            --repo "$REPO_B" \
+            --title "$APP_NAME v$VERSION" \
             --notes "Automated release from CI"
 
-      # 8️⃣ Output download URL
       - name: Output Download URL
         shell: bash
         run: |
           APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
           VERSION=${{ steps.get_version.outputs.VERSION }}
-          REPO="akash-srivastava-pvt/Apps"  # Repo B
+          REPO_B="akash-srivastava-pvt/Apps"
           echo "--------------------------------------------------"
           echo "Download URL:"
-          echo "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
+          echo "https://github.com/$REPO_B/releases/download/v$VERSION/${APP_NAME}-Setup-${VERSION}.exe"
           echo "--------------------------------------------------"

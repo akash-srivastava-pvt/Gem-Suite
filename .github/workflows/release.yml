@@ -39,7 +39,7 @@ jobs:
       # 4. Build Electron (your script)
       # -----------------------------
       - name: Production Build
-        run: node scripts/prod-build.js
+        run: node scripts/dist.js
 
       # -----------------------------
       # 5. Verify output (debug safety)

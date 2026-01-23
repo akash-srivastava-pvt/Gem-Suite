@@ -1,71 +1,87 @@
-name: Build and Release GemSuite
+name: Build & Release GemSuite Desktop
 
 on:
+  workflow_dispatch:
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v1.0.0
+      - "v*"
 
 permissions:
-  contents: write   # Optional if using a PAT
+  contents: write
 
 jobs:
-  build:
-    name: Build and Release Windows x64
+  build-and-release:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout Source Repo
+      # -----------------------------
+      # 1. Checkout source repo (Repo A)
+      # -----------------------------
+      - name: Checkout source
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node.js
+      # -----------------------------
+      # 2. Setup Node
+      # -----------------------------
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      # -----------------------------
+      # 3. Install dependencies
+      # -----------------------------
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Electron App
-        run: node scripts/dist.js
+      # -----------------------------
+      # 4. Build Electron (your script)
+      # -----------------------------
+      - name: Production Build
+        run: node scripts/prod-build.js
+
+      # -----------------------------
+      # 5. Verify output (debug safety)
+      # -----------------------------
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          dir apps\desktop\release
+
+      # -----------------------------
+      # 6. Install GitHub CLI
+      # -----------------------------
+      - name: Install GitHub CLI
+        shell: pwsh
+        run: |
+          winget install --id GitHub.cli --source winget --accept-package-agreements --accept-source-agreements
+
+      # -----------------------------
+      # 7. Create release in Repo B and upload EXE
+      # -----------------------------
+      - name: Upload Installer to Binary Repo
+        shell: pwsh
         env:
-          NODE_ENV: production
-
-      - name: List Build Artifacts
-        run: dir apps\desktop\release
-
-      - name: Get Version & App Name
-        id: get_version
-        shell: bash
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
-          VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
+          $APP_NAME = "GemSuite"
+          $VERSION = (node -p "require('./apps/desktop/package.json').version")
+          $REPO_B = "akash-srivastava-pvt/Apps"
 
-      - name: Upload Release to Binary Repo
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}  # PAT with repo write access
-        run: |
-          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          ARTIFACT="apps/desktop/release/${APP_NAME}-Setup-${VERSION}.exe"
-          REPO_B="akash-srivastava-pvt/Apps"
+          $ARTIFACT = "apps/desktop/release/GemSuite Setup $VERSION.exe"
 
-          echo "Creating release v$VERSION in $REPO_B..."
-          gh release create "v$VERSION" "$ARTIFACT" \
-            --repo "$REPO_B" \
-            --title "$APP_NAME v$VERSION" \
-            --notes "Automated release from CI"
+          if (!(Test-Path $ARTIFACT)) {
+            Write-Error "Artifact not found: $ARTIFACT"
+            exit 1
+          }
 
-      - name: Output Download URL
-        shell: bash
-        run: |
-          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          REPO_B="akash-srivastava-pvt/Apps"
-          echo "--------------------------------------------------"
-          echo "Download URL:"
-          echo "https://github.com/$REPO_B/releases/download/v$VERSION/${APP_NAME}-Setup-${VERSION}.exe"
-          echo "--------------------------------------------------"
+          Write-Host "Creating release v$VERSION in $REPO_B"
+          Write-Host "Uploading $ARTIFACT"
+
+          gh release create "v$VERSION" `
+            "$ARTIFACT" `
+            --repo "$REPO_B" `
+            --title "$APP_NAME v$VERSION" `
+            --notes "Automated desktop release"
+

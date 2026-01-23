@@ -6,7 +6,7 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write  # Required for creating releases (optional if using PAT)
+  contents: write
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout source repo (Repo A)
+      # 1️⃣ Checkout source repo
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -48,7 +48,7 @@ jobs:
       # 6️⃣ Upload artifact to separate repo (Repo B)
       - name: Upload Release to Binary Repo
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with write access to Repo B
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # MUST be GH_TOKEN for gh CLI
         run: |
           $appName = "${{ steps.get_version.outputs.APP_NAME }}"
           $version = "${{ steps.get_version.outputs.VERSION }}"

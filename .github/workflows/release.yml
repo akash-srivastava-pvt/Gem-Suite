@@ -1,66 +1,84 @@
-name: Build & Release GemSuite Desktop
+name: Build and Release GemSuite (Store Ready)
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
+  build:
+    name: Build Windows EXE and Upload to Azure
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout source repo
+      # 1️⃣ Checkout
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 2️⃣ Setup Node
-      - name: Setup Node
+      # 2️⃣ Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: "lts/*"
+          cache: "npm"
 
       # 3️⃣ Install deps
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      # 4️⃣ Build app
-      - name: Production build
+      # 4️⃣ Build (your production script)
+      - name: Build Electron App
         run: node scripts/dist.js
-
-      # 5️⃣ Verify output (important for sanity)
-      - name: Verify release files
-        shell: pwsh
-        run: |
-          dir apps\desktop\release
-
-      # 6️⃣ Create release in Repo B and upload EXE
-      - name: Upload installer to binary repo
-        shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          NODE_ENV: production
+
+      # 5️⃣ Extract version + artifact path
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
         run: |
-          $APP_NAME = "GemSuite"
-          $VERSION = (node -p "require('./apps/desktop/package.json').version")
-          $REPO_B = "akash-srivastava-pvt/Apps"
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          APP_NAME="GemSuite"
+          EXE_NAME="GemSuite Setup $VERSION.exe"
+          EXE_PATH="apps/desktop/release/$EXE_NAME"
 
-          $ARTIFACT = "apps/desktop/release/GemSuite Setup $VERSION.exe"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "EXE_NAME=$EXE_NAME" >> $GITHUB_OUTPUT
+          echo "EXE_PATH=$EXE_PATH" >> $GITHUB_OUTPUT
 
-          if (!(Test-Path $ARTIFACT)) {
-            Write-Error "❌ Artifact not found: $ARTIFACT"
+      # 6️⃣ Verify artifact exists (important)
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          if (!(Test-Path "${{ steps.meta.outputs.EXE_PATH }}")) {
+            Write-Error "Installer not found!"
             exit 1
           }
 
-          Write-Host "🚀 Creating release v$VERSION in $REPO_B"
-          Write-Host "📦 Uploading $ARTIFACT"
+      # 7️⃣ Upload to Azure Blob (NO redirect)
+      - name: Upload EXE to Azure Blob
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az storage blob upload \
+              --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
+              --account-key ${{ secrets.AZURE_STORAGE_KEY }} \
+              --container-name ${{ secrets.AZURE_CONTAINER_NAME }} \
+              --name GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }} \
+              --file "${{ steps.meta.outputs.EXE_PATH }}" \
+              --overwrite true
 
-          gh release create "v$VERSION" `
-            "$ARTIFACT" `
-            --repo "$REPO_B" `
-            --title "$APP_NAME v$VERSION" `
-            --notes "Automated desktop release"
+      # 8️⃣ Output Microsoft Store–ready URL
+      - name: Output Store Package URL
+        shell: bash
+        run: |
+          echo "----------------------------------------------"
+          echo "Microsoft Store Package URL (NO REDIRECT):"
+          echo "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/${{ secrets.AZURE_CONTAINER_NAME }}/GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }}"
+          echo "----------------------------------------------"

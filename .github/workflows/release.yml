@@ -1,12 +1,12 @@
-name: Release Gem Suite
+name: Build and Release GemSuite
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write   # 🔑 REQUIRED to create GitHub Releases
+  contents: write   # Required for creating releases in source repo (optional if using PAT)
 
 jobs:
   build:
@@ -14,26 +14,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # 1️⃣ Checkout source repo
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
           cache: 'npm'
 
+      # 3️⃣ Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      - name: Build Electron App (no publish)
+      # 4️⃣ Build Electron app
+      - name: Build Electron App
         run: node scripts/dist.js
         env:
           NODE_ENV: production
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 🔑 electron-builder needs THIS
 
+      # 5️⃣ Get version and app name
       - name: Get Version
         id: get_version
         shell: bash
@@ -42,25 +46,29 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          files: |
-            apps/desktop/release/${{ steps.get_version.outputs.APP_NAME }}-${{ steps.get_version.outputs.VERSION }}-x64.exe
+      # 6️⃣ Upload artifact to separate repo (Repo B)
+      - name: Upload Release to Binary Repo
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # Personal Access Token with write access to Repo B
+        run: |
+          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          ARTIFACT_PATH="apps/desktop/release/${APP_NAME}-${VERSION}-x64.exe"
 
-      - name: Output Package URL
+          echo "Creating release v$VERSION in repo B and uploading artifact..."
+          gh release create "v$VERSION" "$ARTIFACT_PATH" \
+            --repo https://github.com/akash-srivastava-pvt/Apps/tree/main/GemSuite \
+            --title "$APP_NAME v$VERSION" \
+            --notes "Automated release from CI"
+
+      # 7️⃣ Output download URL
+      - name: Output Download URL
         shell: bash
         run: |
-          REPOSITORY="${{ github.repository }}"
-          TAG="${{ github.ref_name }}"
-          FILENAME="${{ steps.get_version.outputs.APP_NAME }}-${{ steps.get_version.outputs.VERSION }}-x64.exe"
+          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          REPO="https://github.com/akash-srivastava-pvt/Apps/tree/main/GemSuite"
           echo "--------------------------------------------------"
-          echo "Microsoft Store Package URL:"
-          echo "https://github.com/${REPOSITORY}/releases/download/${TAG}/${FILENAME}"
+          echo "Download URL:"
+          echo "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
           echo "--------------------------------------------------"

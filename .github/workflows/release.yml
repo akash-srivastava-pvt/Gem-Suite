@@ -1,0 +1,71 @@
+name: Release Gem Suite
+
+# This workflow builds the Electron application for Windows x64 and uploads the installer
+# as a GitHub Release asset whenever a new version tag (vX.Y.Z) is pushed.
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags like v1.0.0
+
+jobs:
+  build:
+    name: Build and Release Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        # Installs root dependencies and workspace dependencies
+        run: npm install
+
+      - name: Build and Distribute
+        # This script handles building packages, web, server, and finally the Electron app
+        run: node scripts/dist.js
+        env:
+          NODE_ENV: production
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Version
+        # Extracts version from the desktop app's package.json for naming the release asset
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        # Creates a new GitHub Release and uploads the .exe installer
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            apps/desktop/release/${{ steps.get_version.outputs.APP_NAME }}-${{ steps.get_version.outputs.VERSION }}-x64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output Package URL
+        # Displays the public URL which can be used as the Microsoft Store Package URL
+        shell: bash
+        run: |
+          REPOSITORY="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          FILENAME="${{ steps.get_version.outputs.APP_NAME }}-${{ steps.get_version.outputs.VERSION }}-x64.exe"
+          URL="https://github.com/${REPOSITORY}/releases/download/${TAG}/${FILENAME}"
+          echo "--------------------------------------------------"
+          echo "Microsoft Store Package URL:"
+          echo "$URL"
+          echo "--------------------------------------------------"

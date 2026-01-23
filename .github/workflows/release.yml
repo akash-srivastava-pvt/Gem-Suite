@@ -14,53 +14,33 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # -----------------------------
-      # 1. Checkout source repo (Repo A)
-      # -----------------------------
+      # 1️⃣ Checkout source repo
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # -----------------------------
-      # 2. Setup Node
-      # -----------------------------
+      # 2️⃣ Setup Node
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # -----------------------------
-      # 3. Install dependencies
-      # -----------------------------
+      # 3️⃣ Install deps
       - name: Install dependencies
         run: npm ci
 
-      # -----------------------------
-      # 4. Build Electron (your script)
-      # -----------------------------
-      - name: Production Build
+      # 4️⃣ Build app
+      - name: Production build
         run: node scripts/dist.js
 
-      # -----------------------------
-      # 5. Verify output (debug safety)
-      # -----------------------------
+      # 5️⃣ Verify output (important for sanity)
       - name: Verify release files
         shell: pwsh
         run: |
           dir apps\desktop\release
 
-      # -----------------------------
-      # 6. Install GitHub CLI
-      # -----------------------------
-      - name: Install GitHub CLI
-        shell: pwsh
-        run: |
-          winget install --id GitHub.cli --source winget --accept-package-agreements --accept-source-agreements
-
-      # -----------------------------
-      # 7. Create release in Repo B and upload EXE
-      # -----------------------------
-      - name: Upload Installer to Binary Repo
+      # 6️⃣ Create release in Repo B and upload EXE
+      - name: Upload installer to binary repo
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
@@ -72,16 +52,15 @@ jobs:
           $ARTIFACT = "apps/desktop/release/GemSuite Setup $VERSION.exe"
 
           if (!(Test-Path $ARTIFACT)) {
-            Write-Error "Artifact not found: $ARTIFACT"
+            Write-Error "❌ Artifact not found: $ARTIFACT"
             exit 1
           }
 
-          Write-Host "Creating release v$VERSION in $REPO_B"
-          Write-Host "Uploading $ARTIFACT"
+          Write-Host "🚀 Creating release v$VERSION in $REPO_B"
+          Write-Host "📦 Uploading $ARTIFACT"
 
           gh release create "v$VERSION" `
             "$ARTIFACT" `
             --repo "$REPO_B" `
             --title "$APP_NAME v$VERSION" `
             --notes "Automated desktop release"
-

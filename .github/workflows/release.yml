@@ -3,63 +3,78 @@ name: Build and Release GemSuite
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write
+  contents: write  # Needed to fetch repo content
 
 jobs:
-  build:
+  build-and-release:
+    name: Build & Release Windows x64
     runs-on: windows-latest
 
     steps:
+      # 1️⃣ Checkout source repo (Repo A)
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
           cache: 'npm'
 
+      # 3️⃣ Install dependencies
       - name: Install Dependencies
         run: npm install
 
+      # 4️⃣ Build Electron app
       - name: Build Electron App
         run: node scripts/dist.js
         env:
           NODE_ENV: production
 
+      # 5️⃣ Get version and app name
       - name: Get Version
         id: get_version
-        shell: pwsh
+        shell: bash
         run: |
-          $pkg = Get-Content ./apps/desktop/package.json | ConvertFrom-Json
-          $version = $pkg.version
-          Write-Output "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Output "APP_NAME=GemSuite" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
 
-      - name: Upload Release to Binary Repo
-        shell: pwsh
+      # 6️⃣ Install GitHub CLI
+      - name: Setup GitHub CLI
+        uses: cli/cli-action@v3
+
+      # 7️⃣ Create release in Repo B and upload artifact
+      - name: Upload Release to Repo B
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}   # Must be a Personal Access Token with repo access to Repo B
         run: |
-          $env:GH_TOKEN = "${{ secrets.RELEASE_PAT }}"  # MUST be GH_TOKEN for gh CLI
-          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $artifactPath = "apps/desktop/release/$appName-$version-x64.exe"
-          $repo = "akash-srivastava-pvt/Apps"  # target repo for artifacts
+          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          ARTIFACT_PATH="apps/desktop/release/${APP_NAME}-${VERSION}-x64.exe"
+          REPO_B="akash-srivastava-pvt/Apps"  # Replace with your actual binary repo
 
-          Write-Host "Creating release v$version in $repo and uploading artifact..."
-          gh release create "v$version" $artifactPath --repo $repo --title "$appName v$version" --notes "Automated release from CI"
+          echo "Creating release v$VERSION in $REPO_B and uploading artifact..."
+          gh release create "v$VERSION" "$ARTIFACT_PATH" \
+            --repo "$REPO_B" \
+            --title "$APP_NAME v$VERSION" \
+            --notes "Automated release from CI"
 
+      # 8️⃣ Output download URL
       - name: Output Download URL
-        shell: pwsh
+        shell: bash
         run: |
-          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $repo = "akash-srivastava-pvt/Apps"
-          Write-Host "--------------------------------------------------"
-          Write-Host "Download URL:"
-          Write-Host "https://github.com/$repo/releases/download/v$version/$appName-$version-x64.exe"
-          Write-Host "--------------------------------------------------"
+          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          REPO_B="akash-srivastava-pvt/Apps"  # Same repo as above
+          echo "--------------------------------------------------"
+          echo "Download URL:"
+          echo "https://github.com/$REPO_B/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
+          echo "--------------------------------------------------"

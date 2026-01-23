@@ -1,0 +1,41 @@
+# Gem Suite Privacy Policy
+Last Updated: January 23, 2026
+
+1. Overview
+Gem Suite ("the App") is a premium desktop AI ecosystem designed to provide productive and creative tools. This Privacy Policy describes how your data is handled when you use the Gem Suite applications, including Gem Amnatrada, Gem Musafir, Gem Likhit, and Gem Vivarad.
+
+2. Data Residency & Local-First Design
+Gem Suite is built with a "Local-First" philosophy. This means that by default, your data stays on your own device.
+- Local Storage: Your notes, itineraries, resumes, and app settings are stored in a local SQLite database on your machine (typically in %APPDATA%/GemSuite/ for Windows users).
+- No Cloud Sync: Your data is not automatically synchronized with any central server or cloud storage managed by us.
+
+3. AI Processing & Third-Party Services
+To provide AI-powered features, Gem Suite communicates with external providers:
+- Google Gemini AI: Your prompts and data inputs (e.g., resume content, travel requests) are sent to Google's Gemini API for processing. This data is subject to Google's generative AI privacy terms.
+- PII Protection: For sensitive applications like Gem Vivarad (Resume Maker), the app utilizes an anonymization service to strip or separate Personally Identifiable Information (PII) before it is sent for AI processing where possible.
+- API Keys: You provide your own API keys to access AI services. These keys are stored securely on your local system and are never shared with us or any unauthorized third parties.
+
+4. Information We Collect
+Because Gem Suite runs locally, we do not have access to your personal data. However, the app may track:
+- Usage Metrics: Basic analytics on how often features are used and performance logs are stored locally to help you troubleshoot issues.
+- System Health: Connectivity and database status are monitored to ensure app stability.
+
+5. Security Measures
+We prioritize your data security through:
+- Process Isolation: The application, local server, and desktop host run in isolated processes.
+- Secure Credential Storage: API keys and sensitive tokens are managed through native secure storage mechanisms.
+- Sandboxed Environment: Electron-based security protocols are implemented to prevent unauthorized file system access.
+
+6. Your Control
+You have full control over your data:
+- Deletion: You can delete your local database or individual saved items at any time through the app or by manually clearing the application data folder.
+- Transparency: You can view logs and local artifacts directly within your file system.
+
+7. Changes to This Policy
+We may update this Privacy Policy from time to time. Any changes will be reflected in an updated version of the App or this file.
+
+8. Contact Information
+For questions regarding this privacy policy or how your data is handled, please refer to the project repository or documentation.
+
+Gem Suite © 2026
+The Intelligence Laboratory of Connected AI Assistants.

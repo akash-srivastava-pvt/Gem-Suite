@@ -57,6 +57,7 @@
       "web/**/*"
     ],
     "nsis": {
+      "artifactName": "${productName}-${version}-x64.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "runAfterFinish": true,

@@ -1,4 +1,4 @@
-name: Build and Release GemSuite (Store Ready)
+name: Build and Publish GemSuite (No Redirect)
 
 on:
   push:
@@ -6,41 +6,34 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write   # needed to push gh-pages
 
 jobs:
   build:
-    name: Build Windows EXE and Upload to Azure
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Node
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
-          cache: "npm"
+          node-version: lts/*
+          cache: npm
 
-      # 3️⃣ Install deps
       - name: Install dependencies
         run: npm install
 
-      # 4️⃣ Build (your production script)
       - name: Build Electron App
         run: node scripts/dist.js
         env:
           NODE_ENV: production
 
-      # 5️⃣ Extract version + artifact path
-      - name: Resolve build metadata
+      - name: Resolve metadata
         id: meta
-        shell: bash
         run: |
           VERSION=$(node -p "require('./apps/desktop/package.json').version")
           APP_NAME="GemSuite"
@@ -48,37 +41,34 @@ jobs:
           EXE_PATH="apps/desktop/release/$EXE_NAME"
 
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "APP_NAME=$APP_NAME" >> $GITHUB_OUTPUT
           echo "EXE_NAME=$EXE_NAME" >> $GITHUB_OUTPUT
           echo "EXE_PATH=$EXE_PATH" >> $GITHUB_OUTPUT
 
-      # 6️⃣ Verify artifact exists (important)
-      - name: Verify installer exists
-        shell: pwsh
-        run: |
-          if (!(Test-Path "${{ steps.meta.outputs.EXE_PATH }}")) {
-            Write-Error "Installer not found!"
-            exit 1
-          }
+      - name: Verify installer
+        run: test -f "${{ steps.meta.outputs.EXE_PATH }}"
 
-      # 7️⃣ Upload to Azure Blob (NO redirect)
-      - name: Upload EXE to Azure Blob
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az storage blob upload \
-              --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
-              --account-key ${{ secrets.AZURE_STORAGE_KEY }} \
-              --container-name ${{ secrets.AZURE_CONTAINER_NAME }} \
-              --name GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }} \
-              --file "${{ steps.meta.outputs.EXE_PATH }}" \
-              --overwrite true
-
-      # 8️⃣ Output Microsoft Store–ready URL
-      - name: Output Store Package URL
-        shell: bash
+      - name: Publish to GitHub Pages (NO redirect)
         run: |
-          echo "----------------------------------------------"
-          echo "Microsoft Store Package URL (NO REDIRECT):"
-          echo "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/${{ secrets.AZURE_CONTAINER_NAME }}/GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }}"
-          echo "----------------------------------------------"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git fetch origin gh-pages || true
+          git checkout gh-pages || git checkout --orphan gh-pages
+
+          mkdir -p GemSuite/${{ steps.meta.outputs.VERSION }}
+          cp "${{ steps.meta.outputs.EXE_PATH }}" "GemSuite/${{ steps.meta.outputs.VERSION }}/"
+
+          echo "# GemSuite Downloads" > index.html
+          echo "" >> index.html
+          echo "- [GemSuite ${{ steps.meta.outputs.VERSION }}](GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }})" >> index.html
+
+          git add .
+          git commit -m "Release GemSuite ${{ steps.meta.outputs.VERSION }}"
+          git push origin gh-pages --force
+
+      - name: Output Microsoft Store URL
+        run: |
+          echo "--------------------------------------------"
+          echo "MICROSOFT STORE PACKAGE URL:"
+          echo "https://${{ github.repository_owner }}.github.io/Apps/GemSuite/${{ steps.meta.outputs.VERSION }}/${{ steps.meta.outputs.EXE_NAME }}"
+          echo "--------------------------------------------"

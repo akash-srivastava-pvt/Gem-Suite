@@ -6,15 +6,15 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: write  # Needed to fetch repo content
+  contents: write  # Needed if creating releases in source repo (optional here)
 
 jobs:
-  build-and-release:
-    name: Build & Release Windows x64
+  build:
+    name: Build and Release Windows x64
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout source repo (Repo A)
+      # 1️⃣ Checkout source repo
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -47,24 +47,26 @@ jobs:
           echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
 
       # 6️⃣ Install GitHub CLI
-      - name: Setup GitHub CLI
-        uses: cli/cli-action@v3
-
-      # 7️⃣ Create release in Repo B and upload artifact
-      - name: Upload Release to Repo B
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}   # Must be a Personal Access Token with repo access to Repo B
+      - name: Install GitHub CLI
         run: |
-          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          ARTIFACT_PATH="apps/desktop/release/${APP_NAME}-${VERSION}-x64.exe"
-          REPO_B="akash-srivastava-pvt/Apps"  # Replace with your actual binary repo
+          choco install gh -y
+          gh --version
 
-          echo "Creating release v$VERSION in $REPO_B and uploading artifact..."
-          gh release create "v$VERSION" "$ARTIFACT_PATH" \
-            --repo "$REPO_B" \
-            --title "$APP_NAME v$VERSION" \
+      # 7️⃣ Create release and upload artifact to Repo B
+      - name: Upload Release to Binary Repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with write access to Repo B
+        shell: pwsh
+        run: |
+          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $artifactPath = "apps/desktop/release/$appName-$version-x64.exe"
+          $repoB = "akash-srivastava-pvt/Apps" # Replace with Repo B full name
+
+          Write-Host "Creating release v$version in $repoB and uploading artifact..."
+          gh release create "v$version" $artifactPath `
+            --repo $repoB `
+            --title "$appName v$version" `
             --notes "Automated release from CI"
 
       # 8️⃣ Output download URL
@@ -73,8 +75,8 @@ jobs:
         run: |
           APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
           VERSION=${{ steps.get_version.outputs.VERSION }}
-          REPO_B="akash-srivastava-pvt/Apps"  # Same repo as above
+          REPO="akash-srivastava-pvt/Apps"  # Repo B
           echo "--------------------------------------------------"
           echo "Download URL:"
-          echo "https://github.com/$REPO_B/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
+          echo "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
           echo "--------------------------------------------------"

@@ -6,8 +6,7 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
 
 permissions:
-  contents: read  # Source repo permissions
-  # The PAT will handle write permissions to Repo B
+  contents: write  # Required for creating releases (optional if using PAT)
 
 jobs:
   build:
@@ -41,35 +40,31 @@ jobs:
       # 5️⃣ Get version and app name
       - name: Get Version
         id: get_version
-        shell: bash
         run: |
-          VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "APP_NAME=GemSuite" >> $GITHUB_OUTPUT
+          $version = (Get-Content ./apps/desktop/package.json | ConvertFrom-Json).version
+          Write-Host "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "APP_NAME=GemSuite" >> $env:GITHUB_OUTPUT
 
-      # 6️⃣ Upload artifact to Repo B
+      # 6️⃣ Upload artifact to separate repo (Repo B)
       - name: Upload Release to Binary Repo
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with repo access to Repo B
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }} # PAT with write access to Repo B
         run: |
-          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          ARTIFACT_PATH="apps/desktop/release/${APP_NAME}-${VERSION}-x64.exe"
+          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $artifactPath = "apps/desktop/release/$appName-$version-x64.exe"
+          $repo = "akash-srivastava-pvt/Apps"  # Repo B where artifact will be released
 
-          echo "Creating release v$VERSION in Repo B and uploading artifact..."
-          gh release create "v$VERSION" "$ARTIFACT_PATH" \
-            --repo akash-srivastava-pvt/Apps \
-            --title "$APP_NAME v$VERSION" \
-            --notes "Automated release from CI"
+          Write-Host "Creating release v$version in $repo and uploading artifact..."
+          gh release create "v$version" $artifactPath --repo $repo --title "$appName v$version" --notes "Automated release from CI"
 
       # 7️⃣ Output download URL
       - name: Output Download URL
-        shell: bash
         run: |
-          APP_NAME=${{ steps.get_version.outputs.APP_NAME }}
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          REPO="akash-srivastava-pvt/Apps"
-          echo "--------------------------------------------------"
-          echo "Download URL:"
-          echo "https://github.com/$REPO/releases/download/v$VERSION/${APP_NAME}-${VERSION}-x64.exe"
-          echo "--------------------------------------------------"
+          $appName = "${{ steps.get_version.outputs.APP_NAME }}"
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $repo = "akash-srivastava-pvt/Apps"
+          Write-Host "--------------------------------------------------"
+          Write-Host "Download URL:"
+          Write-Host "https://github.com/$repo/releases/download/v$version/$appName-$version-x64.exe"
+          Write-Host "--------------------------------------------------"

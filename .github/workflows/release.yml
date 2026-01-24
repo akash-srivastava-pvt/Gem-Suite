@@ -79,7 +79,6 @@ jobs:
           [IO.File]::WriteAllBytes("codesign.pfx", $bytes)
 
       - name: Locate signtool.exe
-        id: signtool
         shell: powershell
         run: |
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
@@ -91,8 +90,7 @@ jobs:
             throw "signtool.exe not found"
           }
 
-          echo "SIGNSDK=$($signtool.FullName)" >> $env:GITHUB_ENV
-          Write-Host "Using signtool: $($signtool.FullName)"
+          echo "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
 
       - name: Sign EXE
         shell: powershell
@@ -102,7 +100,7 @@ jobs:
             throw "No EXE found to sign"
           }
 
-          & "$env:SIGNSDK" sign `
+          & "$env:SIGNTOOL" sign `
             /f codesign.pfx `
             /p "${{ secrets.CODESIGN_PASSWORD }}" `
             /fd SHA256 `
@@ -113,7 +111,13 @@ jobs:
       - name: Verify signature
         shell: powershell
         run: |
-          Get-AuthenticodeSignature (Get-ChildItem unsigned -Recurse -Filter *.exe)
+          $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
+          $sig | Format-List
+
+          if ($sig.Status -ne "Valid") {
+            throw "Signature validation failed"
+          }
 
       - name: Upload signed installer artifact
         uses: actions/upload-artifact@v4
@@ -122,10 +126,10 @@ jobs:
           path: unsigned
 
 # ------------------------------------------------------------
-# 3️⃣ PUBLISH SIGNED INSTALLER TO REPO B (GITHUB PAGES)
+# 3️⃣ PUBLISH TO VERSIONED RELEASE BRANCH (REPO B)
 # ------------------------------------------------------------
-  publish-pages:
-    name: Publish Installer to GitHub Pages
+  publish-release-branch:
+    name: Publish Installer to Versioned Branch
     runs-on: ubuntu-latest
     needs: sign-windows
 
@@ -149,23 +153,24 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Copy installer to Repo B
-        run: |
-          mkdir -p repo-b/GemSuite/${{ needs.sign-windows.outputs.version }}
-          cp -r site/GemSuite/${{ needs.sign-windows.outputs.version }}/* \
-                repo-b/GemSuite/${{ needs.sign-windows.outputs.version }}/
-
-      - name: Commit & push to gh-pages
+      - name: Create versioned release branch & publish
         run: |
           cd repo-b
-          git checkout -B gh-pages
-          git add GemSuite
-          git commit -m "Release v${{ needs.sign-windows.outputs.version }}" || echo "No changes"
-          git push -u origin gh-pages --force
+          VERSION=${{ needs.sign-windows.outputs.version }}
+          BRANCH="release/v$VERSION"
 
-      - name: Output direct installer URL
+          git checkout -B $BRANCH
+
+          mkdir -p GemSuite/$VERSION
+          cp -r ../site/GemSuite/$VERSION/* GemSuite/$VERSION/
+
+          git add GemSuite
+          git commit -m "GemSuite release v$VERSION" || echo "No changes"
+          git push -u origin $BRANCH --force
+
+      - name: Output installer URL
         run: |
           echo "--------------------------------------------------"
-          echo "Direct installer URL (NO redirect):"
+          echo "Installer URL:"
           echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
           echo "--------------------------------------------------"

@@ -1,4 +1,4 @@
-name: Build & Publish GemSuite Installer
+name: Build, Sign & Publish GemSuite Installer
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
 # ------------------------------------------------------------
-# 1️⃣ BUILD WINDOWS INSTALLER
+# 1️⃣ BUILD WINDOWS INSTALLER (UNSIGNED)
 # ------------------------------------------------------------
   build-windows:
     name: Build Windows Installer
@@ -46,36 +46,83 @@ jobs:
           VERSION=$(node -p "require('./apps/desktop/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Upload installer artifact
+      - name: Upload unsigned installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gemsuite-installer
+          name: gemsuite-installer-unsigned
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/latest.yml
 
 # ------------------------------------------------------------
-# 2️⃣ PUBLISH TO REPO B GITHUB PAGES
+# 2️⃣ CODE SIGN WINDOWS INSTALLER
 # ------------------------------------------------------------
-  publish-pages:
-    name: Publish Installer to Repo B GitHub Pages
-    runs-on: ubuntu-latest
+  sign-windows:
+    name: Code Sign Windows Installer
+    runs-on: windows-latest
     needs: build-windows
 
+    outputs:
+      version: ${{ needs.build-windows.outputs.version }}
+
     steps:
-      - name: Checkout Repo B
+      - name: Download unsigned installer
+        uses: actions/download-artifact@v4
+        with:
+          name: gemsuite-installer-unsigned
+          path: unsigned
+
+      - name: Restore code signing certificate
+        shell: powershell
+        run: |
+          $bytes = [Convert]::FromBase64String("${{ secrets.CODESIGN_PFX_BASE64 }}")
+          [IO.File]::WriteAllBytes("codesign.pfx", $bytes)
+
+      - name: Sign EXE using signtool
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
+          signtool sign `
+            /f codesign.pfx `
+            /p "${{ secrets.CODESIGN_PASSWORD }}" `
+            /fd SHA256 `
+            /tr http://timestamp.digicert.com `
+            /td SHA256 `
+            $exe.FullName
+
+      - name: Verify signature
+        shell: powershell
+        run: |
+          Get-AuthenticodeSignature (Get-ChildItem unsigned -Recurse -Filter *.exe)
+
+      - name: Upload signed installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemsuite-installer-signed
+          path: unsigned
+
+# ------------------------------------------------------------
+# 3️⃣ PUBLISH SIGNED INSTALLER TO REPO B (GITHUB PAGES)
+# ------------------------------------------------------------
+  publish-pages:
+    name: Publish Installer to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: sign-windows
+
+    steps:
+      - name: Checkout Repo B (Apps)
         uses: actions/checkout@v4
         with:
-          repository: akash-srivastava-pvt/Apps  # <-- Repo B
-          token: ${{ secrets.RELEASE_PAT }}     # <-- PAT with write access to Repo B
+          repository: akash-srivastava-pvt/Apps
+          token: ${{ secrets.RELEASE_PAT }}
           path: repo-b
           fetch-depth: 0
 
-      - name: Download installer artifact
+      - name: Download signed installer
         uses: actions/download-artifact@v4
         with:
-          name: gemsuite-installer
-          path: site/GemSuite/${{ needs.build-windows.outputs.version }}
+          name: gemsuite-installer-signed
+          path: site/GemSuite/${{ needs.sign-windows.outputs.version }}
 
       - name: Configure git identity
         run: |
@@ -84,20 +131,21 @@ jobs:
 
       - name: Copy installer to Repo B
         run: |
-          mkdir -p repo-b/GemSuite/${{ needs.build-windows.outputs.version }}
-          cp -r site/GemSuite/${{ needs.build-windows.outputs.version }}/* repo-b/GemSuite/${{ needs.build-windows.outputs.version }}/
+          mkdir -p repo-b/GemSuite/${{ needs.sign-windows.outputs.version }}
+          cp -r site/GemSuite/${{ needs.sign-windows.outputs.version }}/* \
+                repo-b/GemSuite/${{ needs.sign-windows.outputs.version }}/
 
       - name: Commit & push to gh-pages
         run: |
           cd repo-b
           git checkout -B gh-pages
           git add GemSuite
-          git commit -m "Release v${{ needs.build-windows.outputs.version }}" || echo "No changes to commit"
+          git commit -m "Release v${{ needs.sign-windows.outputs.version }}" || echo "No changes"
           git push -u origin gh-pages --force
 
       - name: Output direct installer URL
         run: |
           echo "--------------------------------------------------"
           echo "Direct installer URL (NO redirect):"
-          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.build-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.build-windows.outputs.version }}.exe"
+          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
           echo "--------------------------------------------------"

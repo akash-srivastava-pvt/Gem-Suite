@@ -78,11 +78,31 @@ jobs:
           $bytes = [Convert]::FromBase64String("${{ secrets.CODESIGN_PFX_BASE64 }}")
           [IO.File]::WriteAllBytes("codesign.pfx", $bytes)
 
-      - name: Sign EXE using signtool
+      - name: Locate signtool.exe
+        id: signtool
+        shell: powershell
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          echo "SIGNSDK=$($signtool.FullName)" >> $env:GITHUB_ENV
+          Write-Host "Using signtool: $($signtool.FullName)"
+
+      - name: Sign EXE
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          signtool sign `
+          if (-not $exe) {
+            throw "No EXE found to sign"
+          }
+
+          & "$env:SIGNSDK" sign `
             /f codesign.pfx `
             /p "${{ secrets.CODESIGN_PASSWORD }}" `
             /fd SHA256 `

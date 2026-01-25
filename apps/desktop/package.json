@@ -1,6 +1,6 @@
 {
   "name": "@gem/desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "dist/main.js",
   "scripts": {
     "start": "electron .",
@@ -62,8 +62,9 @@
     ],
     "nsis": {
       "oneClick": true,
-      "allowToChangeInstallationDirectory": true,
-      "runAfterFinish": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },

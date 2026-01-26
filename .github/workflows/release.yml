@@ -86,10 +86,7 @@ jobs:
             Sort-Object FullName -Descending |
             Select-Object -First 1
 
-          if (-not $signtool) {
-            throw "signtool.exe not found"
-          }
-
+          if (-not $signtool) { throw "signtool.exe not found" }
           echo "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
           Write-Host "Using signtool: $($signtool.FullName)"
 
@@ -98,9 +95,7 @@ jobs:
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw "No EXE found" }
-
           Write-Host "Signing $($exe.FullName)"
-
           & "$env:SIGNTOOL" sign `
             /f codesign.pfx `
             /p "${{ secrets.CODESIGN_PASSWORD }}" `
@@ -109,17 +104,11 @@ jobs:
             /td SHA256 `
             $exe.FullName
 
-      - name: Verify signature (self-signed safe)
+      - name: Verify signature
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          if (-not $exe) { throw "No EXE found for verification" }
-
-          Write-Host "Verifying signature for $($exe.FullName)"
-
           $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
-          $sig | Format-List
-
           if ($sig.Status -eq "NotSigned") { throw "EXE is NOT signed" }
 
       - name: Upload signed installer artifact
@@ -129,10 +118,10 @@ jobs:
           path: unsigned
 
 # ------------------------------------------------------------
-# 3️⃣ PUBLISH TO VERSIONED RELEASE BRANCH (REPO B) — MSFT STORE SAFE
+# 3️⃣ PUBLISH TO GH-PAGES (STORE-SAFE)
 # ------------------------------------------------------------
-  publish-release-branch:
-    name: Publish Installer to Versioned Branch
+  publish-gh-pages:
+    name: Publish Installer to gh-pages
     runs-on: ubuntu-latest
     needs: sign-windows
 
@@ -156,15 +145,17 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create versioned release branch & publish
+      - name: Create / update gh-pages branch
         run: |
           cd repo-b
           VERSION=${{ needs.sign-windows.outputs.version }}
-          BRANCH="release/v$VERSION"
+          BRANCH="gh-pages"
 
-          git checkout -B $BRANCH
+          # Checkout gh-pages, create if missing
+          git fetch origin $BRANCH || true
+          git checkout $BRANCH || git checkout --orphan $BRANCH
 
-          # ✅ MSFT store-friendly: use rsync instead of cp
+          # Copy EXE + latest.yml safely
           mkdir -p GemSuite/$VERSION
           rsync -a ../site/GemSuite/$VERSION/ GemSuite/$VERSION/
 
@@ -176,5 +167,5 @@ jobs:
         run: |
           echo "--------------------------------------------------"
           echo "Installer URL (MSFT Store-safe):"
-          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
+          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/Gem%20Suite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
           echo "--------------------------------------------------"

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
 # ------------------------------------------------------------
-# 1️⃣ BUILD WINDOWS INSTALLER (UNSIGNED) in Repo A
+# 1️⃣ BUILD WINDOWS INSTALLER (UNSIGNED)
 # ------------------------------------------------------------
   build-windows:
     name: Build Windows Installer
@@ -20,7 +20,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
 
     steps:
-      - name: Checkout source (Repo A)
+      - name: Checkout source repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,9 +32,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      # Must produce a real installer (NSIS / Inno / MSI)
       - name: Build production installer
         run: node scripts/dist.js
         env:
@@ -47,13 +46,7 @@ jobs:
           VERSION=$(node -p "require('./apps/desktop/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Validate installer exists
-        shell: powershell
-        run: |
-          $exe = Get-ChildItem apps/desktop/release -Filter *.exe
-          if (-not $exe) { throw "Installer EXE not found" }
-
-      - name: Upload unsigned installer
+      - name: Upload unsigned installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: gemsuite-installer-unsigned
@@ -62,10 +55,10 @@ jobs:
             apps/desktop/release/latest.yml
 
 # ------------------------------------------------------------
-# 2️⃣ SIGN WINDOWS INSTALLER
+# 2️⃣ CODE SIGN WINDOWS INSTALLER
 # ------------------------------------------------------------
   sign-windows:
-    name: Code Sign Installer
+    name: Code Sign Windows Installer
     runs-on: windows-latest
     needs: build-windows
 
@@ -88,18 +81,25 @@ jobs:
       - name: Locate signtool.exe
         shell: powershell
         run: |
-          $tool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
             -Recurse -Filter signtool.exe |
             Sort-Object FullName -Descending |
             Select-Object -First 1
-          if (-not $tool) { throw "signtool.exe not found" }
-          echo "SIGNTOOL=$($tool.FullName)" >> $env:GITHUB_ENV
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          echo "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
+          Write-Host "Using signtool: $($signtool.FullName)"
 
       - name: Sign EXE
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          if (-not $exe) { throw "EXE not found" }
+          if (-not $exe) { throw "No EXE found" }
+
+          Write-Host "Signing $($exe.FullName)"
 
           & "$env:SIGNTOOL" sign `
             /f codesign.pfx `
@@ -109,25 +109,30 @@ jobs:
             /td SHA256 `
             $exe.FullName
 
-      - name: Verify signature
+      - name: Verify signature (self-signed safe)
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          $sig = Get-AuthenticodeSignature $exe.FullName
+          if (-not $exe) { throw "No EXE found for verification" }
+
+          Write-Host "Verifying signature for $($exe.FullName)"
+
+          $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
           $sig | Format-List
+
           if ($sig.Status -eq "NotSigned") { throw "EXE is NOT signed" }
 
-      - name: Upload signed installer
+      - name: Upload signed installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: gemsuite-installer-signed
           path: unsigned
 
 # ------------------------------------------------------------
-# 3️⃣ PUBLISH TO Repo B → GitHub Release + Pages
+# 3️⃣ PUBLISH TO VERSIONED RELEASE BRANCH (REPO B) — MSFT STORE SAFE
 # ------------------------------------------------------------
-  publish-release:
-    name: Publish EXE to Repo B
+  publish-release-branch:
+    name: Publish Installer to Versioned Branch
     runs-on: ubuntu-latest
     needs: sign-windows
 
@@ -144,52 +149,32 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gemsuite-installer-signed
-          path: release-assets
+          path: site/GemSuite/${{ needs.sign-windows.outputs.version }}
 
-      # ------------------------------------------------------
-      # 3.1 Create GitHub Release in Repo B (Store-safe)
-      # ------------------------------------------------------
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.sign-windows.outputs.version }}
-          name: GemSuite v${{ needs.sign-windows.outputs.version }}
-          draft: false
-          prerelease: false
-          files: |
-            release-assets/**/*.exe
-            release-assets/**/*.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-
-      # ------------------------------------------------------
-      # 3.2 Update GitHub Pages for download landing
-      # ------------------------------------------------------
-      - name: Prepare Pages folder
+      - name: Configure git identity
         run: |
-          mkdir -p repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}
-          cp release-assets/**/*.exe repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}/
-          cp release-assets/**/*.yml repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}/
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit and push Pages update
+      - name: Create versioned release branch & publish
         run: |
           cd repo-b
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pages/GemSuite/${{ needs.sign-windows.outputs.version }}
-          git commit -m "Update Pages: GemSuite v${{ needs.sign-windows.outputs.version }}" || echo "No changes"
-          git push origin main
-
-      # ------------------------------------------------------
-      # 3.3 Output Store-safe URL
-      # ------------------------------------------------------
-      - name: Output URLs
-        run: |
           VERSION=${{ needs.sign-windows.outputs.version }}
+          BRANCH="release/v$VERSION"
+
+          git checkout -B $BRANCH
+
+          # ✅ MSFT store-friendly: use rsync instead of cp
+          mkdir -p GemSuite/$VERSION
+          rsync -a ../site/GemSuite/$VERSION/ GemSuite/$VERSION/
+
+          git add GemSuite
+          git commit -m "GemSuite release v$VERSION" || echo "No changes"
+          git push -u origin $BRANCH --force
+
+      - name: Output installer URL
+        run: |
           echo "--------------------------------------------------"
-          echo "Store-safe Installer URL:"
-          echo "https://github.com/akash-srivastava-pvt/Apps/releases/download/v$VERSION/GemSuite.Setup.$VERSION.exe"
-          echo ""
-          echo "Pages download URL:"
-          echo "https://akash-srivastava-pvt.github.io/Apps/pages/GemSuite/$VERSION/GemSuite.Setup.$VERSION.exe"
+          echo "Installer URL (MSFT Store-safe):"
+          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
           echo "--------------------------------------------------"

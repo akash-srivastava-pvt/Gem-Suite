@@ -34,6 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Must produce a real installer (NSIS / Inno / MSI)
       - name: Build production installer
         run: node scripts/dist.js
         env:
@@ -123,7 +124,7 @@ jobs:
           path: unsigned
 
 # ------------------------------------------------------------
-# 3️⃣ PUBLISH TO Repo B → GitHub Release (Store-safe)
+# 3️⃣ PUBLISH TO Repo B → GitHub Release + Pages
 # ------------------------------------------------------------
   publish-release:
     name: Publish EXE to Repo B
@@ -145,7 +146,10 @@ jobs:
           name: gemsuite-installer-signed
           path: release-assets
 
-      - name: Create GitHub Release in Repo B
+      # ------------------------------------------------------
+      # 3.1 Create GitHub Release in Repo B (Store-safe)
+      # ------------------------------------------------------
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.sign-windows.outputs.version }}
@@ -158,10 +162,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
 
-      - name: Output Store-safe URL
+      # ------------------------------------------------------
+      # 3.2 Update GitHub Pages for download landing
+      # ------------------------------------------------------
+      - name: Prepare Pages folder
+        run: |
+          mkdir -p repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}
+          cp release-assets/**/*.exe repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}/
+          cp release-assets/**/*.yml repo-b/pages/GemSuite/${{ needs.sign-windows.outputs.version }}/
+
+      - name: Commit and push Pages update
+        run: |
+          cd repo-b
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pages/GemSuite/${{ needs.sign-windows.outputs.version }}
+          git commit -m "Update Pages: GemSuite v${{ needs.sign-windows.outputs.version }}" || echo "No changes"
+          git push origin main
+
+      # ------------------------------------------------------
+      # 3.3 Output Store-safe URL
+      # ------------------------------------------------------
+      - name: Output URLs
         run: |
           VERSION=${{ needs.sign-windows.outputs.version }}
-          echo "---------------------------"
-          echo "Installer URL (Store-safe):"
+          echo "--------------------------------------------------"
+          echo "Store-safe Installer URL:"
           echo "https://github.com/akash-srivastava-pvt/Apps/releases/download/v$VERSION/GemSuite.Setup.$VERSION.exe"
-          echo "---------------------------"
+          echo ""
+          echo "Pages download URL:"
+          echo "https://akash-srivastava-pvt.github.io/Apps/pages/GemSuite/$VERSION/GemSuite.Setup.$VERSION.exe"
+          echo "--------------------------------------------------"

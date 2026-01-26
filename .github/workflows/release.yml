@@ -91,17 +91,12 @@ jobs:
           }
 
           echo "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
-          Write-Host "Using signtool: $($signtool.FullName)"
 
       - name: Sign EXE
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          if (-not $exe) {
-            throw "No EXE found to sign"
-          }
-
-          Write-Host "Signing $($exe.FullName)"
+          if (-not $exe) { throw "No EXE found" }
 
           & "$env:SIGNTOOL" sign `
             /f codesign.pfx `
@@ -111,27 +106,14 @@ jobs:
             /td SHA256 `
             $exe.FullName
 
-# ------------------------------------------------------------
-# 2️⃣.1 VERIFY SIGNATURE (SELF-SIGNED SAFE)
-# ------------------------------------------------------------
-      - name: Verify signature (do not fail on self-signed)
+      - name: Verify signature
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
-          if (-not $exe) {
-            throw "No EXE found for verification"
-          }
-
-          Write-Host "Verifying signature for $($exe.FullName)"
-
-          $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
-          $sig | Format-List
-
+          $sig = Get-AuthenticodeSignature $exe.FullName
           if ($sig.Status -eq "NotSigned") {
             throw "EXE is NOT signed"
           }
-
-          Write-Host "Signature exists (Status=$($sig.Status))"
 
       - name: Upload signed installer artifact
         uses: actions/upload-artifact@v4
@@ -140,51 +122,35 @@ jobs:
           path: unsigned
 
 # ------------------------------------------------------------
-# 3️⃣ PUBLISH TO VERSIONED RELEASE BRANCH (REPO B)
+# 3️⃣ PUBLISH TO GITHUB RELEASE (CORRECT WAY)
 # ------------------------------------------------------------
-  publish-release-branch:
-    name: Publish Installer to Versioned Branch
+  publish-github-release:
+    name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: sign-windows
 
     steps:
-      - name: Checkout Repo B (Apps)
-        uses: actions/checkout@v4
-        with:
-          repository: akash-srivastava-pvt/Apps
-          token: ${{ secrets.RELEASE_PAT }}
-          path: repo-b
-          fetch-depth: 0
-
       - name: Download signed installer
         uses: actions/download-artifact@v4
         with:
           name: gemsuite-installer-signed
-          path: site/GemSuite/${{ needs.sign-windows.outputs.version }}
+          path: release-assets
 
-      - name: Configure git identity
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Create GitHub Release & upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.sign-windows.outputs.version }}
+          name: GemSuite v${{ needs.sign-windows.outputs.version }}
+          body: |
+            🚀 **GemSuite v${{ needs.sign-windows.outputs.version }}**
 
-      - name: Create versioned release branch & publish
-        run: |
-          cd repo-b
-          VERSION=${{ needs.sign-windows.outputs.version }}
-          BRANCH="release/v$VERSION"
+            - Windows installer (code-signed)
+            - Auto-update metadata included
+            - SHA256 signing & timestamped
 
-          git checkout -B $BRANCH
-
-          mkdir -p GemSuite/$VERSION
-          cp -r ../site/GemSuite/$VERSION/* GemSuite/$VERSION/
-
-          git add GemSuite
-          git commit -m "GemSuite release v$VERSION" || echo "No changes"
-          git push -u origin $BRANCH --force
-
-      - name: Output installer URL
-        run: |
-          echo "--------------------------------------------------"
-          echo "Installer URL:"
-          echo "https://akash-srivastava-pvt.github.io/Apps/GemSuite/${{ needs.sign-windows.outputs.version }}/GemSuite%20Setup%20${{ needs.sign-windows.outputs.version }}.exe"
-          echo "--------------------------------------------------"
+            Download and install safely.
+          files: |
+            release-assets/**/*.exe
+            release-assets/**/*.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,6 +2,7 @@
   "name": "@gem/desktop",
   "version": "1.0.1",
   "main": "dist/main.js",
+  "author": "Akash Srivastava",
   "scripts": {
     "start": "electron .",
     "build": "tsc",
@@ -33,23 +34,19 @@
   },
   "build": {
     "appId": "com.gemsuite.app",
-    "productName": "GemSuite",
+    "productName": "Gem Suite",
+    "copyright": "© 2026 Gem Suite",
     "asar": true,
-    "asarUnpack": [],
     "extraResources": [
       {
         "from": "server",
         "to": "server",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "assets",
         "to": "assets",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "directories": {
@@ -66,13 +63,13 @@
       "allowToChangeInstallationDirectory": false,
       "runAfterFinish": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "uninstallDisplayName": "Gem Suite"
     },
     "win": {
       "icon": "../../public/icon.png",
-      "target": [
-        "nsis"
-      ]
+      "publisherName": "Akash Srivastava",
+      "target": ["nsis"]
     }
   }
 }

@@ -85,17 +85,14 @@ jobs:
             -Recurse -Filter signtool.exe |
             Sort-Object FullName -Descending |
             Select-Object -First 1
-
           if (-not $signtool) { throw "signtool.exe not found" }
           echo "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
-          Write-Host "Using signtool: $($signtool.FullName)"
 
       - name: Sign EXE
         shell: powershell
         run: |
           $exe = Get-ChildItem unsigned -Recurse -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw "No EXE found" }
-          Write-Host "Signing $($exe.FullName)"
           & "$env:SIGNTOOL" sign `
             /f codesign.pfx `
             /p "${{ secrets.CODESIGN_PASSWORD }}" `
@@ -111,11 +108,13 @@ jobs:
           $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
           if ($sig.Status -eq "NotSigned") { throw "EXE is NOT signed" }
 
-      - name: Upload signed installer artifact
+      - name: Upload signed installer artifact (flattened)
         uses: actions/upload-artifact@v4
         with:
           name: gemsuite-installer-signed
-          path: unsigned
+          path: |
+            unsigned/*.exe
+            unsigned/latest.yml
 
 # ------------------------------------------------------------
 # 3️⃣ PUBLISH TO GH-PAGES (STORE-SAFE)
@@ -140,6 +139,11 @@ jobs:
           name: gemsuite-installer-signed
           path: site/GemSuite/${{ needs.sign-windows.outputs.version }}
 
+      - name: List downloaded files (debug)
+        run: |
+          echo "Downloaded artifact contents:"
+          ls -R site/GemSuite/${{ needs.sign-windows.outputs.version }}
+
       - name: Configure git identity
         run: |
           git config --global user.name "github-actions[bot]"
@@ -151,13 +155,13 @@ jobs:
           VERSION=${{ needs.sign-windows.outputs.version }}
           BRANCH="gh-pages"
 
-          # Checkout gh-pages, create if missing
+          # Fetch and checkout gh-pages (or create if missing)
           git fetch origin $BRANCH || true
           git checkout $BRANCH || git checkout --orphan $BRANCH
 
           # Copy EXE + latest.yml safely
           mkdir -p GemSuite/$VERSION
-          rsync -a ../site/GemSuite/$VERSION/ GemSuite/$VERSION/
+          cp ../site/GemSuite/$VERSION/* GemSuite/$VERSION/ || echo "No files to copy"
 
           git add GemSuite
           git commit -m "GemSuite release v$VERSION" || echo "No changes"

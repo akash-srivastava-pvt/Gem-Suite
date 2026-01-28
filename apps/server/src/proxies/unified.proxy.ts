@@ -38,10 +38,16 @@ class UnifiedProxy {
   }
 
   private async executeGemini(request: ProxyRequest, config: ProxyConfig): Promise<ProxyResponse> {
-    const url = `${config.baseUrl}${config.endpoint.replace('{model}', config.model)}?key=${request.apiKey}`;
+    // Properly URL-encode the API key to handle special characters
+    const encodedApiKey = encodeURIComponent(request.apiKey);
+    const url = `${config.baseUrl}${config.endpoint.replace('{model}', config.model)}?key=${encodedApiKey}`;
 
+    // Log API key format for debugging (masked)
+    const keyPrefix = request.apiKey.substring(0, 5);
+    const keyLength = request.apiKey.length;
+    console.log(`[UNIFIED_PROXY] Gemini Request - Model: ${config.model}, Modality: ${config.modality}, Key Length: ${keyLength}, Key Prefix: ${keyPrefix}...`);
+    // Uncomment next line ONLY for debugging on user machine (logs full key!)
     // console.log(`[UNIFIED_PROXY] Gemini URL: ${url}`);
-    console.log(`[UNIFIED_PROXY] Model: ${config.model}, Modality: ${config.modality}`);
 
     const payload: any = {
       contents: [{
@@ -75,8 +81,29 @@ class UnifiedProxy {
 
         if (!response.ok) {
           const status = response.status;
+          
+          // Read and parse error response body for better debugging
+          let errorDetails = '';
+          try {
+            const errorBody = await response.json();
+            errorDetails = JSON.stringify(errorBody, null, 2);
+            console.error(`[UNIFIED_PROXY] Gemini Error (${status}):`, errorDetails);
+          } catch (e) {
+            // Response body is not JSON, try to read as text
+            try {
+              errorDetails = await response.text();
+              console.error(`[UNIFIED_PROXY] Gemini Error (${status}) - Text:`, errorDetails);
+            } catch (e2) {
+              console.error(`[UNIFIED_PROXY] Gemini Error (${status}) - Could not parse response body`);
+            }
+          }
+          
           if (status === 401 || status === 403) {
             throw new Error('Invalid API key');
+          }
+          if (status === 400) {
+            // 400 Bad Request - usually means malformed request or invalid API key format
+            throw new Error(`Invalid request to Gemini API (400): Check API key format and request structure. Details: ${errorDetails}`);
           }
           if (status === 429) {
             if (attempt < config.maxRetries) {
@@ -116,14 +143,30 @@ class UnifiedProxy {
       } catch (err: any) {
         clearTimeout(timeoutId);
 
-        if (err.name === 'AbortError') {
+        // Network error detection (Windows Firewall, connectivity issues)
+        if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || err.code === 'EHOSTUNREACH' || err.code === 'ENETUNREACH') {
+          console.error(`[UNIFIED_PROXY] Network error (${err.code}): ${err.message}`);
           if (attempt < config.maxRetries) {
+            console.log(`[UNIFIED_PROXY] Retrying network request (attempt ${attempt + 1}/${config.maxRetries})...`);
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
             continue;
           }
-          throw new Error('Request timeout');
+          throw new Error(
+            `Network connectivity error: Cannot reach Gemini API. Check your internet connection and Windows Firewall settings. ` +
+            `(${err.code}: ${err.message})`
+          );
+        }
+
+        if (err.name === 'AbortError') {
+          if (attempt < config.maxRetries) {
+            console.log(`[UNIFIED_PROXY] Request timeout, retrying (attempt ${attempt + 1}/${config.maxRetries})...`);
+            continue;
+          }
+          throw new Error('Request timeout: Could not reach Gemini API within 30-60 seconds. Check your internet connection.');
         }
 
         if (attempt < config.maxRetries) {
+          console.log(`[UNIFIED_PROXY] Request failed, retrying (attempt ${attempt + 1}/${config.maxRetries})...`);
           await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }

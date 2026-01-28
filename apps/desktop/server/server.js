@@ -2944,8 +2944,11 @@ var UnifiedProxy = class {
     }
   }
   async executeGemini(request, config) {
-    const url = `${config.baseUrl}${config.endpoint.replace("{model}", config.model)}?key=${request.apiKey}`;
-    console.log(`[UNIFIED_PROXY] Model: ${config.model}, Modality: ${config.modality}`);
+    const encodedApiKey = encodeURIComponent(request.apiKey);
+    const url = `${config.baseUrl}${config.endpoint.replace("{model}", config.model)}?key=${encodedApiKey}`;
+    const keyPrefix = request.apiKey.substring(0, 5);
+    const keyLength = request.apiKey.length;
+    console.log(`[UNIFIED_PROXY] Gemini Request - Model: ${config.model}, Modality: ${config.modality}, Key Length: ${keyLength}, Key Prefix: ${keyPrefix}...`);
     const payload = {
       contents: [{
         role: "user",
@@ -2972,8 +2975,24 @@ var UnifiedProxy = class {
         clearTimeout(timeoutId);
         if (!response.ok) {
           const status = response.status;
+          let errorDetails = "";
+          try {
+            const errorBody = await response.json();
+            errorDetails = JSON.stringify(errorBody, null, 2);
+            console.error(`[UNIFIED_PROXY] Gemini Error (${status}):`, errorDetails);
+          } catch (e) {
+            try {
+              errorDetails = await response.text();
+              console.error(`[UNIFIED_PROXY] Gemini Error (${status}) - Text:`, errorDetails);
+            } catch (e2) {
+              console.error(`[UNIFIED_PROXY] Gemini Error (${status}) - Could not parse response body`);
+            }
+          }
           if (status === 401 || status === 403) {
             throw new Error("Invalid API key");
+          }
+          if (status === 400) {
+            throw new Error(`Invalid request to Gemini API (400): Check API key format and request structure. Details: ${errorDetails}`);
           }
           if (status === 429) {
             if (attempt < config.maxRetries) {
@@ -3009,13 +3028,26 @@ var UnifiedProxy = class {
         }
       } catch (err) {
         clearTimeout(timeoutId);
-        if (err.name === "AbortError") {
+        if (err.code === "ENOTFOUND" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ENETUNREACH") {
+          console.error(`[UNIFIED_PROXY] Network error (${err.code}): ${err.message}`);
           if (attempt < config.maxRetries) {
+            console.log(`[UNIFIED_PROXY] Retrying network request (attempt ${attempt + 1}/${config.maxRetries})...`);
+            await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
             continue;
           }
-          throw new Error("Request timeout");
+          throw new Error(
+            `Network connectivity error: Cannot reach Gemini API. Check your internet connection and Windows Firewall settings. (${err.code}: ${err.message})`
+          );
+        }
+        if (err.name === "AbortError") {
+          if (attempt < config.maxRetries) {
+            console.log(`[UNIFIED_PROXY] Request timeout, retrying (attempt ${attempt + 1}/${config.maxRetries})...`);
+            continue;
+          }
+          throw new Error("Request timeout: Could not reach Gemini API within 30-60 seconds. Check your internet connection.");
         }
         if (attempt < config.maxRetries) {
+          console.log(`[UNIFIED_PROXY] Request failed, retrying (attempt ${attempt + 1}/${config.maxRetries})...`);
           await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
           continue;
         }
@@ -3183,10 +3215,14 @@ var AiProxyService = class {
       await saveService.trackUsage(appId, "api_hit", { model, modality });
     }
     try {
+      const trimmedApiKey = keyResult.apiKey.trim();
+      if (!trimmedApiKey) {
+        throw new Error("API key is empty after trimming. Please check your API key in Profile settings.");
+      }
       const result = await unifiedProxy.execute({
         model,
         prompt: payload.prompt,
-        apiKey: keyResult.apiKey,
+        apiKey: trimmedApiKey,
         options: {
           temperature: payload.temperature,
           maxTokens: payload.maxTokens

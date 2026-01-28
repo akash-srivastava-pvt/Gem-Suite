@@ -109,10 +109,17 @@ export class AiProxyService {
     }
 
     try {
+      // Trim API key to remove any accidental whitespace from user input
+      const trimmedApiKey = keyResult.apiKey.trim();
+      
+      if (!trimmedApiKey) {
+        throw new Error('API key is empty after trimming. Please check your API key in Profile settings.');
+      }
+
       const result = await unifiedProxy.execute({
         model,
         prompt: payload.prompt,
-        apiKey: keyResult.apiKey,
+        apiKey: trimmedApiKey,
         options: {
           temperature: payload.temperature,
           maxTokens: payload.maxTokens

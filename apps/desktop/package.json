@@ -1,6 +1,6 @@
 {
   "name": "@gem/desktop",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "dist/main.js",
   "author": "Akash Srivastava",
   "scripts": {
@@ -41,12 +41,16 @@
       {
         "from": "server",
         "to": "server",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "assets",
         "to": "assets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
@@ -69,7 +73,9 @@
     "win": {
       "icon": "../../public/icon.png",
       "publisherName": "Akash Srivastava",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     }
   }
 }

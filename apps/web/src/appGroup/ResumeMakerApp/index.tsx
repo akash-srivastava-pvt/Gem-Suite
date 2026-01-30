@@ -518,7 +518,7 @@ export const ResumeMakerApp: React.FC = () => {
                     <div className="placeholder-state">
                         <div className="icon">📄</div>
                         <h3>Your {getDocTitle()} will appear here</h3>
-                        <p>Fill out your profile and click 'Draft' in the header to start.</p>
+                        <p>Fill out your profile and click 'Generate All Documents' in the header to start.</p>
                     </div>
                 )}
             </div>

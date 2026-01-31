@@ -209,6 +209,7 @@ Gem Suite demonstrates:
 ## ⚙️ Development
 
 ```powershell
+git clone https://github.com/akash-srivastava-pvt/Gem-Suite.git
 npm install      # Install dependencies
 npm run build    # Build packages
 npm run dev      # Start everything (Web, Server, Desktop)

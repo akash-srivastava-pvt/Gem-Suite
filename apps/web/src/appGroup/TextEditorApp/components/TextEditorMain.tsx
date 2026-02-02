@@ -51,7 +51,7 @@ export const TextEditorMain: React.FC = () => {
         </div>
 
         <SaveControls
-          appName="likhit"
+          appName="texteditor"
           currentData={content}
           dataType="text"
           onDataLoaded={handleDataLoaded}

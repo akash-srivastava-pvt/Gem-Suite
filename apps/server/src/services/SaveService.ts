@@ -1,6 +1,7 @@
 import { db } from '@gem/db';
 import { SavedArtifact, SaveArtifactRequest, UpdateArtifactRequest, DataType, UsageMetrics } from '@gem/shared';
 import { LoggerModel } from '../models/loggerModel.js';
+import { AuditLogService } from './AuditLogService.js';
 
 export class SaveService {
   /**
@@ -34,7 +35,7 @@ export class SaveService {
       // Log the save event
       await this.trackUsage(appName, 'save', { filename, dataType });
 
-      LoggerModel.log(`Saved artifact: ${appName}/${filename}`);
+      AuditLogService.log(`Generated file saved: ${filename}`, appName, false, "SUCCESS");
 
       return {
         id: result.insertId as number,
@@ -48,7 +49,7 @@ export class SaveService {
       };
     } catch (error: any) {
       console.error('SaveService.saveArtifact error:', error);
-      LoggerModel.log(`Failed to save artifact: ${request.appName}/${request.filename} - ${error.message}`);
+      AuditLogService.log(`Save Artifact Error: ${error.message}`, request.appName, false, "FAILED", { filename: request.filename });
       throw new Error(`Failed to save artifact: ${error.message}`);
     }
   }
@@ -177,13 +178,13 @@ export class SaveService {
       // Log the update event
       await this.trackUsage(appName, 'save', { filename, action: 'update' });
 
-      LoggerModel.log(`Updated artifact: ${appName}/${filename}`);
+      AuditLogService.log(`Updated file: ${filename}`, appName, false, "SUCCESS");
 
       // Return updated artifact
       return updates.filename ? await this.getArtifact(appName, updates.filename) : await this.getArtifact(appName, filename);
     } catch (error: any) {
       console.error('SaveService.updateArtifact error:', error);
-      LoggerModel.log(`Failed to update artifact: ${appName}/${filename} - ${error.message}`);
+      AuditLogService.log(`Failed to update file: ${filename}`, appName, false, "FAILED");
       throw new Error(`Failed to update artifact: ${error.message}`);
     }
   }
@@ -205,13 +206,13 @@ export class SaveService {
       const deleted = result.changes > 0;
 
       if (deleted) {
-        LoggerModel.log(`Deleted artifact: ${appName}/${filename}`);
+        AuditLogService.log(`Deleted file: ${filename}`, appName, false, "SUCCESS");
       }
 
       return deleted;
     } catch (error: any) {
       console.error('SaveService.deleteArtifact error:', error);
-      LoggerModel.log(`Failed to delete artifact: ${appName}/${filename} - ${error.message}`);
+      AuditLogService.log(`Delete Artifact Error: ${error.message}`, appName, false, "FAILED", { filename });
       throw new Error(`Failed to delete artifact: ${error.message}`);
     }
   }

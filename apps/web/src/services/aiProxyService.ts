@@ -29,6 +29,10 @@ export const aiProxyService = {
       clearTimeout(timeoutId);
       const result = await response.json();
       
+      if (response.status === 429) {
+        throw new Error("API quota exceeded. Please try again later or update your API plan.");
+      }
+      
       if (!response.ok) {
         throw new Error(result.error || `HTTP ${response.status}: ${response.statusText}`);
       }

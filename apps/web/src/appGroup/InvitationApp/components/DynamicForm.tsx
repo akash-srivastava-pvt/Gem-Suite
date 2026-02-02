@@ -154,6 +154,7 @@ export function DynamicForm({
                 )}
                 <button
                     onClick={() => onSubmit(form)}
+                    disabled={!config.fields.every(f => form[f.name] && form[f.name].toString().trim().length > 0)}
                     style={{
                         flex: 2,
                         backgroundColor: theme.colors.primary,
@@ -163,11 +164,12 @@ export function DynamicForm({
                         fontWeight: 600,
                         border: 'none',
                         borderRadius: theme.borderRadius.md,
-                        cursor: 'pointer',
-                        transition: theme.transitions.default
+                        cursor: config.fields.every(f => form[f.name] && form[f.name].toString().trim().length > 0) ? 'pointer' : 'not-allowed',
+                        transition: theme.transitions.default,
+                        opacity: config.fields.every(f => form[f.name] && form[f.name].toString().trim().length > 0) ? 1 : 0.6
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseEnter={(e) => { if (config.fields.every(f => form[f.name] && form[f.name].toString().trim().length > 0)) e.currentTarget.style.opacity = '0.9'; }}
+                    onMouseLeave={(e) => { if (config.fields.every(f => form[f.name] && form[f.name].toString().trim().length > 0)) e.currentTarget.style.opacity = '1'; }}
                 >
                     Continue →
                 </button>

@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "types": ["vitest/globals", "node"],
+    "noEmit": true,
+    "experimentalDecorators": true
+  },
+  "include": [
+    "tests/**/*",
+    "tests/setup/**/*",
+    "tests/unit/**/*",
+    "vitest.config.ts",
+    "tests/**/setup/**/*.ts",
+    "src/**/*",
+    "apps/**/src/**/*",
+    "packages/**/src/**/*"
+  ]
+}

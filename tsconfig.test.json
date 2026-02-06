@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "types": ["vitest/globals", "node"],
+    "isolatedModules": false,
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["tests", "src", "packages/**/*.ts", "apps/**/src/**/*.ts"]
+}

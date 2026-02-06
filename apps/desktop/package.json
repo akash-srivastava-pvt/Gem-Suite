@@ -1,6 +1,6 @@
 {
   "name": "@gem/desktop",
-  "version": "1.0.6",
+  "version": "1.1.1",
   "main": "dist/main.js",
   "author": "Akash Srivastava",
   "scripts": {
@@ -63,7 +63,8 @@
     ],
     "nsis": {
       "oneClick": true,
-      "perMachine": false,
+      "perMachine": true,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": false,
       "runAfterFinish": false,
       "createDesktopShortcut": true,

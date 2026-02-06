@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Run coverage check to ensure quality; will block commit if coverage falls below threshold
+npm run test:coverage

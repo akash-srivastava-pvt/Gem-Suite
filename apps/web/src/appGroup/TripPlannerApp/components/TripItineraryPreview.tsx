@@ -116,7 +116,7 @@ export const TripItineraryPreview = ({ data }: any) => {
           <h2 style={sectionHeaderStyle}>Day-by-Day Journey</h2>
 
           {itinerary.map((day: any) => (
-            <div key={day.day} style={cardStyle}>
+            <div key={day.day} id={`day-${day.day}`} style={cardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                 <div>
                   <div style={{ ...labelStyle }}>Day {day.day}</div>

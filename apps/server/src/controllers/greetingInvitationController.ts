@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
 import { LoggerModel } from '../models/loggerModel.js';
+import { AuditLogService } from '../services/AuditLogService.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
 import { saveService } from '../services/SaveService.js';
@@ -56,7 +57,7 @@ export async function GreetingInvitationController(
         // ─────────────────────────────────────────
         // 2. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
-        LoggerModel.log(`Starting greeting card generation workflow: ${greeting}`);
+        AuditLogService.log(`Starting greeting card: ${greeting}`, 'invitation', false, "SUCCESS");
 
         // Track the unique flow API hit
         await saveService.trackUsage('invitation', 'api_hit', { theme: 'greetings', greetingType: theme });
@@ -79,6 +80,7 @@ export async function GreetingInvitationController(
 
         if (!result.success) {
             console.error('Workflow errors:', result.errors);
+            AuditLogService.log(`Greeting card failed: ${greeting}`, 'invitation', false, "FAILED");
             return res.status(500).json({
                 error: 'Greeting card generation workflow failed',
                 details: result.errors
@@ -94,12 +96,13 @@ export async function GreetingInvitationController(
         };
 
         if (!finalResult?.image?.base64) {
+            AuditLogService.log(`Greeting card produced no image: ${greeting}`, 'invitation', false, "FAILED");
             return res.status(502).json({
                 error: 'Gemini did not return an image',
             });
         }
 
-        LoggerModel.log(`Greeting card generation completed: ${greeting}`);
+        AuditLogService.log(`Greeting card completed: ${greeting}`, 'invitation', false, "SUCCESS");
 
         // Track generation event
         await saveService.trackUsage('invitation', 'generate', {
@@ -123,6 +126,7 @@ export async function GreetingInvitationController(
 
     } catch (error: any) {
         console.error('Greeting card generation failed:', error);
+        AuditLogService.log(`Greeting card error: ${error.message}`, 'invitation', false, "FAILED");
         await saveService.trackUsage('invitation', 'api_error', {
             error: error.message,
             theme: 'greetings',

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
 import { LoggerModel } from '../models/loggerModel.js';
+import { AuditLogService } from '../services/AuditLogService.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
 import { saveService } from '../services/SaveService.js';
@@ -43,7 +44,7 @@ export async function EventInvitationController(
                 .json({ error: 'Date and venue are required' });
         }
 
-        LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+        AuditLogService.log(`Starting event invitation: ${eventName}`, 'invitation', false, "SUCCESS");
 
         // Track the unique flow API hit
         await saveService.trackUsage('invitation', 'api_hit', { theme: 'event', eventTheme: theme });
@@ -68,6 +69,7 @@ export async function EventInvitationController(
 
         if (!result.success) {
             console.error('Workflow errors:', result.errors);
+            AuditLogService.log(`Event invitation failed: ${eventName}`, 'invitation', false, "FAILED");
             return res.status(500).json({
                 error: 'Event invitation generation workflow failed',
                 details: result.errors
@@ -83,6 +85,7 @@ export async function EventInvitationController(
         };
 
         if (!finalResult?.image?.base64) {
+            AuditLogService.log(`Event invitation produced no image: ${eventName}`, 'invitation', false, "FAILED");
             return res.status(502).json({
                 error: 'Gemini did not return an image',
             });
@@ -95,7 +98,7 @@ export async function EventInvitationController(
             language
         });
 
-        LoggerModel.log(`Event invitation generation completed: ${eventName}`);
+        AuditLogService.log(`Event invitation completed: ${eventName}`, 'invitation', false, "SUCCESS");
 
         return res.status(200).json({
             success: true,
@@ -109,6 +112,7 @@ export async function EventInvitationController(
 
     } catch (error: any) {
         console.error('Event invitation generation failed:', error);
+        AuditLogService.log(`Event invitation error: ${error.message}`, 'invitation', false, "FAILED");
         await saveService.trackUsage('invitation', 'api_error', {
             error: error.message,
             theme: 'event',

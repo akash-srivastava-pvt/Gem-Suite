@@ -1,15 +1,27 @@
 import React, { useState } from 'react';
 import { TripItineraryPreview } from './TripItineraryPreview.jsx';
-// import { TripMap } from './TripMap.jsx';
-// import { TripJsonPreview } from './TripJsonPreview.jsx';
+import { TripBlueprint } from './TripBlueprint.jsx';
 import { theme } from '../../../theme.js';
 
-type Tab = 'preview' | 'map' | 'json';
+type Tab = 'preview' | 'blueprint' | 'map' | 'json';
 
 export const TripPlannerApp = ({ data }: { data: any }) => {
   const [activeTab, setActiveTab] = useState<Tab>('preview');
   const hasData = data?.itinerary?.length > 0;
-  const tabSet = ['preview'];
+  const tabSet = ['preview', 'blueprint'];
+
+  const handleNavigateToDay = (day: number) => {
+    setActiveTab('preview');
+    // We need to wait for the tab to switch and render before scrolling
+    setTimeout(() => {
+      const element = document.getElementById(`day-${day}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.style.outline = `2px solid ${theme.colors.primary}`;
+        setTimeout(() => { element.style.outline = 'none'; }, 2000);
+      }
+    }, 100);
+  };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 16px',
@@ -42,7 +54,7 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
         <div style={{ display: 'flex', gap: 6, backgroundColor: theme.colors.background, padding: '4px', borderRadius: theme.borderRadius.md }}>
           {tabSet.map(t => (
             <button key={t} style={tabStyle(activeTab === t)} onClick={() => setActiveTab(t as Tab)}>
-              {t === 'preview' ? 'Itinerary' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'preview' ? 'List View' : t === 'blueprint' ? 'Blueprint' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -64,6 +76,7 @@ export const TripPlannerApp = ({ data }: { data: any }) => {
           </div>
         )}
         {hasData && activeTab === 'preview' && <TripItineraryPreview data={data} />}
+        {hasData && activeTab === 'blueprint' && <TripBlueprint data={data} onNavigate={handleNavigateToDay} />}
       </main>
     </div>
   );

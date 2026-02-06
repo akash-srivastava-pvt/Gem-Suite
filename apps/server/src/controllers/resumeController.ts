@@ -80,9 +80,10 @@ export const ResumeController = {
                 cover_letter_para: data.cover_letter_para,
             };
             await ResumeService.createOrUpdateResume(dbData);
-            AuditLogService.log("Resume created / updated", "RESUME", false, "SUCCESS");
+            AuditLogService.log("Resume Save: Data saved to database", "resumemaker", false, "SUCCESS", { fileReference: data.name });
             res.json({ success: true });
         } catch (error: any) {
+            AuditLogService.log(`Resume Save Error: ${error.message}`, "resumemaker", false, "FAILED");
             res.status(500).json({ error: error.message });
         }
     },
@@ -91,10 +92,10 @@ export const ResumeController = {
         try {
             const data = req.body;
 
-            AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
+            AuditLogService.log("Resume ATS: Anonymisation started", "resumemaker", false, "SUCCESS");
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
-            AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
+            AuditLogService.log("Resume ATS: Starting generation workflow", "resumemaker", false, "SUCCESS", { fileReference: data.name });
 
             // Track the unique flow API hit
             await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_ats' });
@@ -125,7 +126,7 @@ export const ResumeController = {
             }
 
             const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
-            AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
+            AuditLogService.log("Resume ATS: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
 
             await saveService.trackUsage('resumemaker', 'generate', {
                 action: 'generate_ats',
@@ -135,7 +136,7 @@ export const ResumeController = {
 
             res.json(finalResult);
         } catch (error: any) {
-            AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
+            AuditLogService.log(`Resume ATS Error: ${error.message}`, "resumemaker", false, "FAILED");
             await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_ats' });
             res.status(500).json({ error: error.message });
         }
@@ -147,7 +148,7 @@ export const ResumeController = {
 
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
-            AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
+            AuditLogService.log("Cover Letter: Starting generation", "resumemaker", false, "SUCCESS", { fileReference: data.name });
 
             // Track the unique flow API hit
             await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_cover_letter' });
@@ -156,12 +157,15 @@ export const ResumeController = {
 
             const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
 
+            AuditLogService.log("Cover Letter: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
+
             await saveService.trackUsage('resumemaker', 'generate', {
                 action: 'generate_cover_letter'
             });
 
             res.json(finalResult);
         } catch (error: any) {
+            AuditLogService.log(`Cover Letter Error: ${error.message}`, "resumemaker", false, "FAILED");
             await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_cover_letter' });
             res.status(500).json({ error: error.message });
         }
@@ -173,7 +177,7 @@ export const ResumeController = {
 
             const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
 
-            AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
+            AuditLogService.log("SOP: Starting generation", "resumemaker", false, "SUCCESS", { fileReference: data.name });
 
             // Track the unique flow API hit
             await saveService.trackUsage('resumemaker', 'api_hit', { action: 'generate_sop' });
@@ -182,12 +186,15 @@ export const ResumeController = {
 
             const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
 
+            AuditLogService.log("SOP: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
+
             await saveService.trackUsage('resumemaker', 'generate', {
                 action: 'generate_sop'
             });
 
             res.json(finalResult);
         } catch (error: any) {
+            AuditLogService.log(`SOP Error: ${error.message}`, "resumemaker", false, "FAILED");
             await saveService.trackUsage('resumemaker', 'api_error', { error: error.message, action: 'generate_sop' });
             res.status(500).json({ error: error.message });
         }

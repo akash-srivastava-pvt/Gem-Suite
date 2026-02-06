@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
 import { LoggerModel } from '../models/loggerModel.js';
+import { AuditLogService } from '../services/AuditLogService.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { invitationMakerWorkflow } from '../orchestration/workflows.js';
 import { saveService } from '../services/SaveService.js';
@@ -44,7 +45,7 @@ export async function WeddingInvitationController(
         // ─────────────────────────────────────────
         // 3. Execute Workflow with MCP/A2A
         // ─────────────────────────────────────────
-        LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
+        AuditLogService.log(`Starting wedding invitation: ${groomName} & ${brideName}`, 'invitation', false, "SUCCESS");
 
         // Track the unique flow API hit
         await saveService.trackUsage('invitation', 'api_hit', { theme: 'wedding', religion });
@@ -70,6 +71,7 @@ export async function WeddingInvitationController(
 
         if (!result.success) {
             console.error('Workflow errors:', result.errors);
+            AuditLogService.log(`Wedding invitation failed: ${groomName} & ${brideName}`, 'invitation', false, "FAILED");
             return res.status(500).json({
                 error: 'Invitation generation workflow failed',
                 details: result.errors
@@ -85,12 +87,13 @@ export async function WeddingInvitationController(
         };
 
         if (!finalResult?.image?.base64) {
+            AuditLogService.log(`Wedding invitation produced no image: ${groomName} & ${brideName}`, 'invitation', false, "FAILED");
             return res.status(502).json({
                 error: 'Gemini did not return an image',
             });
         }
 
-        LoggerModel.log(`Invitation generation completed: ${groomName} & ${brideName}`);
+        AuditLogService.log(`Wedding invitation completed: ${groomName} & ${brideName}`, 'invitation', false, "SUCCESS");
 
         // Track generation event
         await saveService.trackUsage('invitation', 'generate', {
@@ -114,6 +117,7 @@ export async function WeddingInvitationController(
 
     } catch (error: any) {
         console.error('Wedding invitation generation failed:', error);
+        AuditLogService.log(`Wedding invitation error: ${error.message}`, 'invitation', false, "FAILED");
         await saveService.trackUsage('invitation', 'api_error', {
             error: error.message,
             theme: 'wedding',

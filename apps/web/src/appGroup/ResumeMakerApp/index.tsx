@@ -127,6 +127,12 @@ export const ResumeMakerApp: React.FC = () => {
         }
     };
 
+    const isFormValid = data.name.trim().length > 0 &&
+        data.contacts.length > 0 &&
+        data.contacts.some(c => c.value.trim().length > 0) &&
+        data.work_history.length > 0 &&
+        data.education.length > 0;
+
     // Update header actions
     useEffect(() => {
         setHeaderActions(
@@ -143,8 +149,9 @@ export const ResumeMakerApp: React.FC = () => {
                 />
                 <button
                     className="gen-btn-header"
-                    disabled={loading || (isCompletePackage && !isDirty)}
+                    disabled={loading || (isCompletePackage && !isDirty) || !isFormValid}
                     onClick={generateAllDocuments}
+                    style={{ opacity: (loading || (isCompletePackage && !isDirty) || !isFormValid) ? 0.6 : 1 }}
                 >
                     {loading ? 'Generating...' :
                         (isCompletePackage && !isDirty) ? '✓ All Generated' :
@@ -153,7 +160,7 @@ export const ResumeMakerApp: React.FC = () => {
             </>
         );
         return () => setHeaderActions(null);
-    }, [loading, data, generated, isCompletePackage, isDirty]);
+    }, [loading, data, generated, isCompletePackage, isDirty, isFormValid]);
 
     const handleAddField = (section: keyof ResumeData) => {
         setData(prev => ({

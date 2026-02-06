@@ -607,6 +607,23 @@ var ValidationError = class _ValidationError extends AppError {
   }
 };
 
+// src/services/AuditLogService.ts
+var AuditLogService = {
+  log: (event, gemName = "resumemaker", piiExposed = false, status = "SUCCESS", details) => {
+    const logData = {
+      event,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      gemName,
+      actionType: event.split(":")[0] || "ACTION",
+      // Basic heuristic or rely on event string
+      piiExposed,
+      status,
+      ...details
+    };
+    LoggerModel.log(JSON.stringify(logData));
+  }
+};
+
 // src/orchestration/agentRegistry.ts
 var AgentRegistry = class {
   constructor() {
@@ -1946,7 +1963,7 @@ var SaveService = class {
         [appName, filename, data, dataType, now, now, metadataJson]
       );
       await this.trackUsage(appName, "save", { filename, dataType });
-      LoggerModel.log(`Saved artifact: ${appName}/${filename}`);
+      AuditLogService.log(`Generated file saved: ${filename}`, appName, false, "SUCCESS");
       return {
         id: result.insertId,
         appName,
@@ -1959,7 +1976,7 @@ var SaveService = class {
       };
     } catch (error) {
       console.error("SaveService.saveArtifact error:", error);
-      LoggerModel.log(`Failed to save artifact: ${request.appName}/${request.filename} - ${error.message}`);
+      AuditLogService.log(`Save Artifact Error: ${error.message}`, request.appName, false, "FAILED", { filename: request.filename });
       throw new Error(`Failed to save artifact: ${error.message}`);
     }
   }
@@ -2066,11 +2083,11 @@ var SaveService = class {
         updateValues
       );
       await this.trackUsage(appName, "save", { filename, action: "update" });
-      LoggerModel.log(`Updated artifact: ${appName}/${filename}`);
+      AuditLogService.log(`Updated file: ${filename}`, appName, false, "SUCCESS");
       return updates.filename ? await this.getArtifact(appName, updates.filename) : await this.getArtifact(appName, filename);
     } catch (error) {
       console.error("SaveService.updateArtifact error:", error);
-      LoggerModel.log(`Failed to update artifact: ${appName}/${filename} - ${error.message}`);
+      AuditLogService.log(`Failed to update file: ${filename}`, appName, false, "FAILED");
       throw new Error(`Failed to update artifact: ${error.message}`);
     }
   }
@@ -2088,12 +2105,12 @@ var SaveService = class {
       );
       const deleted = result.changes > 0;
       if (deleted) {
-        LoggerModel.log(`Deleted artifact: ${appName}/${filename}`);
+        AuditLogService.log(`Deleted file: ${filename}`, appName, false, "SUCCESS");
       }
       return deleted;
     } catch (error) {
       console.error("SaveService.deleteArtifact error:", error);
-      LoggerModel.log(`Failed to delete artifact: ${appName}/${filename} - ${error.message}`);
+      AuditLogService.log(`Delete Artifact Error: ${error.message}`, appName, false, "FAILED", { filename });
       throw new Error(`Failed to delete artifact: ${error.message}`);
     }
   }
@@ -2232,7 +2249,7 @@ async function TripController(req, res) {
     if (end <= start) {
       return res.status(400).json({ error: "End date must be after start date" });
     }
-    LoggerModel.log(`Starting trip planning workflow: ${data.places.join(", ")}`);
+    AuditLogService.log(`Starting trip planning: ${data.places.join(", ")}`, "tripplanner", false, "SUCCESS");
     await saveService.trackUsage("tripplanner", "api_hit", { places: data.places.length });
     const result = await agentOrchestrator.executeWorkflow(tripPlannerWorkflow, {
       data,
@@ -2241,6 +2258,7 @@ async function TripController(req, res) {
     });
     if (!result.success) {
       console.error("Trip workflow errors:", result.errors);
+      AuditLogService.log(`Trip planning failed: ${data.places.join(", ")}`, "tripplanner", false, "FAILED");
       return res.status(500).json({
         error: "Trip planning workflow failed",
         details: result.errors
@@ -2256,6 +2274,7 @@ async function TripController(req, res) {
     };
     if (Object.keys(finalResult).length === 0) {
       console.error("Trip workflow produced no results:", result);
+      AuditLogService.log(`Trip planning produced no results: ${data.places.join(", ")}`, "tripplanner", false, "FAILED");
       return res.status(500).json({
         error: "Trip planning completed but produced no results",
         details: "All workflow steps returned empty data"
@@ -2265,13 +2284,14 @@ async function TripController(req, res) {
       places: data.places.length,
       tripType: data.tripType
     });
-    LoggerModel.log(`Trip planning completed: ${data.places.join(", ")}`);
+    AuditLogService.log(`Trip planning completed: ${data.places.join(", ")}`, "tripplanner", false, "SUCCESS");
     return res.status(200).json({
       success: true,
       data: finalResult
     });
   } catch (error) {
     console.error("Trip planning failed:", error);
+    AuditLogService.log(`Trip planning error: ${error.message}`, "tripplanner", false, "FAILED");
     await saveService.trackUsage("tripplanner", "api_error", {
       error: error.message,
       places: req.body?.data?.places?.length
@@ -2301,12 +2321,12 @@ async function TextEditorController(req, res) {
       return res.status(400).json({ success: false, error: "intent and text required" });
     }
     const { intent, text, language, tone, style } = data;
-    LoggerModel.log(`Starting text editor request: ${intent}`);
+    AuditLogService.log(`Starting text editor request: ${intent}`, "texteditor", false, "SUCCESS");
     await saveService.trackUsage("texteditor", "api_hit", { intent });
     let finalResult;
     const isSimpleIntent = ["translate", "summarize", "grammar", "rewrite", "autocomplete", "continue"].includes(intent);
     if (isSimpleIntent) {
-      LoggerModel.log(`Executing simple intent: ${intent}`);
+      AuditLogService.log(`Executing simple intent: ${intent}`, "texteditor", false, "SUCCESS");
       finalResult = await agentOrchestrator.callAgent("text-editor-main-agent", {
         intent,
         text,
@@ -2327,6 +2347,7 @@ async function TextEditorController(req, res) {
       });
       if (!result.success) {
         console.error("Text editor workflow errors:", result.errors);
+        AuditLogService.log(`Text editing failed: ${intent}`, "texteditor", false, "FAILED");
         return res.status(500).json({
           success: false,
           error: "Text editing workflow failed",
@@ -2337,19 +2358,21 @@ async function TextEditorController(req, res) {
       finalResult = workflowResults.tone || workflowResults.style || workflowResults.grammar || workflowResults.edit;
     }
     if (!finalResult) {
+      AuditLogService.log(`Text editing produced no results: ${intent}`, "texteditor", false, "FAILED");
       return res.status(500).json({
         success: false,
         error: "Text editing completed but produced no results"
       });
     }
     await saveService.trackUsage("texteditor", "generate", { intent });
-    LoggerModel.log(`Text editing completed: ${intent}`);
+    AuditLogService.log(`Text editing completed: ${intent}`, "texteditor", false, "SUCCESS");
     return res.status(200).json({
       success: true,
       data: finalResult
     });
   } catch (err) {
     console.error("TextEditorController error:", err);
+    AuditLogService.log(`Text editing error: ${err.message}`, "texteditor", false, "FAILED");
     await saveService.trackUsage("texteditor", "api_error", { error: err.message, intent: req.body?.data?.intent });
     return res.status(500).json({
       success: false,
@@ -2388,7 +2411,7 @@ async function WeddingInvitationController(req, res) {
     if (!date || !time || !venue) {
       return res.status(400).json({ error: "Date, time, and venue are required" });
     }
-    LoggerModel.log(`Starting invitation generation workflow: ${groomName} & ${brideName}`);
+    AuditLogService.log(`Starting wedding invitation: ${groomName} & ${brideName}`, "invitation", false, "SUCCESS");
     await saveService.trackUsage("invitation", "api_hit", { theme: "wedding", religion });
     const invitationData = {
       theme: "wedding",
@@ -2410,6 +2433,7 @@ async function WeddingInvitationController(req, res) {
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
+      AuditLogService.log(`Wedding invitation failed: ${groomName} & ${brideName}`, "invitation", false, "FAILED");
       return res.status(500).json({
         error: "Invitation generation workflow failed",
         details: result.errors
@@ -2422,11 +2446,12 @@ async function WeddingInvitationController(req, res) {
       ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
+      AuditLogService.log(`Wedding invitation produced no image: ${groomName} & ${brideName}`, "invitation", false, "FAILED");
       return res.status(502).json({
         error: "Gemini did not return an image"
       });
     }
-    LoggerModel.log(`Invitation generation completed: ${groomName} & ${brideName}`);
+    AuditLogService.log(`Wedding invitation completed: ${groomName} & ${brideName}`, "invitation", false, "SUCCESS");
     await saveService.trackUsage("invitation", "generate", {
       theme: "wedding",
       religion,
@@ -2443,6 +2468,7 @@ async function WeddingInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Wedding invitation generation failed:", error);
+    AuditLogService.log(`Wedding invitation error: ${error.message}`, "invitation", false, "FAILED");
     await saveService.trackUsage("invitation", "api_error", {
       error: error.message,
       theme: "wedding",
@@ -2484,7 +2510,7 @@ async function EventInvitationController(req, res) {
     if (!date || !venue) {
       return res.status(400).json({ error: "Date and venue are required" });
     }
-    LoggerModel.log(`Starting event invitation generation workflow: ${eventName}`);
+    AuditLogService.log(`Starting event invitation: ${eventName}`, "invitation", false, "SUCCESS");
     await saveService.trackUsage("invitation", "api_hit", { theme: "event", eventTheme: theme });
     const invitationData = {
       theme: "event",
@@ -2505,6 +2531,7 @@ async function EventInvitationController(req, res) {
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
+      AuditLogService.log(`Event invitation failed: ${eventName}`, "invitation", false, "FAILED");
       return res.status(500).json({
         error: "Event invitation generation workflow failed",
         details: result.errors
@@ -2517,6 +2544,7 @@ async function EventInvitationController(req, res) {
       ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
+      AuditLogService.log(`Event invitation produced no image: ${eventName}`, "invitation", false, "FAILED");
       return res.status(502).json({
         error: "Gemini did not return an image"
       });
@@ -2526,7 +2554,7 @@ async function EventInvitationController(req, res) {
       eventTheme: theme,
       language
     });
-    LoggerModel.log(`Event invitation generation completed: ${eventName}`);
+    AuditLogService.log(`Event invitation completed: ${eventName}`, "invitation", false, "SUCCESS");
     return res.status(200).json({
       success: true,
       image: {
@@ -2538,6 +2566,7 @@ async function EventInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Event invitation generation failed:", error);
+    AuditLogService.log(`Event invitation error: ${error.message}`, "invitation", false, "FAILED");
     await saveService.trackUsage("invitation", "api_error", {
       error: error.message,
       theme: "event",
@@ -2581,7 +2610,7 @@ async function GreetingInvitationController(req, res) {
     if (!fromName || fromName.trim() === "") {
       return res.status(400).json({ error: "From name is required" });
     }
-    LoggerModel.log(`Starting greeting card generation workflow: ${greeting}`);
+    AuditLogService.log(`Starting greeting card: ${greeting}`, "invitation", false, "SUCCESS");
     await saveService.trackUsage("invitation", "api_hit", { theme: "greetings", greetingType: theme });
     const invitationData = {
       theme: "greetings",
@@ -2600,6 +2629,7 @@ async function GreetingInvitationController(req, res) {
     });
     if (!result.success) {
       console.error("Workflow errors:", result.errors);
+      AuditLogService.log(`Greeting card failed: ${greeting}`, "invitation", false, "FAILED");
       return res.status(500).json({
         error: "Greeting card generation workflow failed",
         details: result.errors
@@ -2612,11 +2642,12 @@ async function GreetingInvitationController(req, res) {
       ...workflowResults.quality || {}
     };
     if (!finalResult?.image?.base64) {
+      AuditLogService.log(`Greeting card produced no image: ${greeting}`, "invitation", false, "FAILED");
       return res.status(502).json({
         error: "Gemini did not return an image"
       });
     }
-    LoggerModel.log(`Greeting card generation completed: ${greeting}`);
+    AuditLogService.log(`Greeting card completed: ${greeting}`, "invitation", false, "SUCCESS");
     await saveService.trackUsage("invitation", "generate", {
       theme: "greetings",
       greetingType: theme,
@@ -2633,6 +2664,7 @@ async function GreetingInvitationController(req, res) {
     });
   } catch (error) {
     console.error("Greeting card generation failed:", error);
+    AuditLogService.log(`Greeting card error: ${error.message}`, "invitation", false, "FAILED");
     await saveService.trackUsage("invitation", "api_error", {
       error: error.message,
       theme: "greetings",
@@ -2848,20 +2880,6 @@ var AnonymisationService = {
       console.error("Failed to parse reinserted JSON", e);
       return jsonObj;
     }
-  }
-};
-
-// src/services/AuditLogService.ts
-var AuditLogService = {
-  log: (event, dataType = "RESUME", piiExposed = false, status = "SUCCESS") => {
-    const logData = {
-      event,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      dataType,
-      piiExposed,
-      status
-    };
-    LoggerModel.log(JSON.stringify(logData));
   }
 };
 
@@ -3470,18 +3488,19 @@ var ResumeController = {
         cover_letter_para: data.cover_letter_para
       };
       await ResumeService.createOrUpdateResume(dbData);
-      AuditLogService.log("Resume created / updated", "RESUME", false, "SUCCESS");
+      AuditLogService.log("Resume Save: Data saved to database", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       res.json({ success: true });
     } catch (error) {
+      AuditLogService.log(`Resume Save Error: ${error.message}`, "resumemaker", false, "FAILED");
       res.status(500).json({ error: error.message });
     }
   },
   async generateATS(req, res) {
     try {
       const data = req.body;
-      AuditLogService.log("Anonymisation started", "RESUME", false, "SUCCESS");
+      AuditLogService.log("Resume ATS: Anonymisation started", "resumemaker", false, "SUCCESS");
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
-      AuditLogService.log("Starting resume generation workflow", "RESUME_ATS", false, "SUCCESS");
+      AuditLogService.log("Resume ATS: Starting generation workflow", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_ats" });
       const result = await GeminiTransformService.generateATSResume(anonymisedData, false);
       if ((!result.education || result.education.length === 0) && anonymisedData.education && anonymisedData.education.length > 0) {
@@ -3502,7 +3521,7 @@ var ResumeController = {
         result.skills = anonymisedData.skills;
       }
       const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
-      AuditLogService.log("PII reinsertion completed", "RESUME_ATS", false, "SUCCESS");
+      AuditLogService.log("Resume ATS: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_ats",
         hasJobDescription: !!data.jobDescription,
@@ -3510,7 +3529,7 @@ var ResumeController = {
       });
       res.json(finalResult);
     } catch (error) {
-      AuditLogService.log(`AI Error: ${error.message}`, "RESUME_ATS", false, "FAILED");
+      AuditLogService.log(`Resume ATS Error: ${error.message}`, "resumemaker", false, "FAILED");
       await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_ats" });
       res.status(500).json({ error: error.message });
     }
@@ -3519,15 +3538,17 @@ var ResumeController = {
     try {
       const data = req.body;
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
-      AuditLogService.log("Generating Cover Letter", "COVER_LETTER", false, "SUCCESS");
+      AuditLogService.log("Cover Letter: Starting generation", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_cover_letter" });
       const result = await GeminiTransformService.generateCoverLetter(anonymisedData, false);
       const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
+      AuditLogService.log("Cover Letter: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_cover_letter"
       });
       res.json(finalResult);
     } catch (error) {
+      AuditLogService.log(`Cover Letter Error: ${error.message}`, "resumemaker", false, "FAILED");
       await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_cover_letter" });
       res.status(500).json({ error: error.message });
     }
@@ -3536,15 +3557,17 @@ var ResumeController = {
     try {
       const data = req.body;
       const { anonymisedData, originalPII } = AnonymisationService.anonymise(data);
-      AuditLogService.log("Generating SOP", "SOP", false, "SUCCESS");
+      AuditLogService.log("SOP: Starting generation", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "api_hit", { action: "generate_sop" });
       const result = await GeminiTransformService.generateSOP(anonymisedData, false);
       const finalResult = AnonymisationService.reinsertIntoJson(result, originalPII);
+      AuditLogService.log("SOP: Generation completed", "resumemaker", false, "SUCCESS", { fileReference: data.name });
       await saveService.trackUsage("resumemaker", "generate", {
         action: "generate_sop"
       });
       res.json(finalResult);
     } catch (error) {
+      AuditLogService.log(`SOP Error: ${error.message}`, "resumemaker", false, "FAILED");
       await saveService.trackUsage("resumemaker", "api_error", { error: error.message, action: "generate_sop" });
       res.status(500).json({ error: error.message });
     }
@@ -4310,7 +4333,7 @@ var AiProxyController = {
       if (error.message.includes("quota") || error.message.includes("limit")) {
         return res.status(429).json({
           success: false,
-          error: "API quota exceeded. Please try again later."
+          error: "API quota exceeded. Please try again later or update your API plan."
         });
       }
       if (error.message.includes("timeout")) {

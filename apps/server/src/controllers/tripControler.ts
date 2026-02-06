@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ValidationError } from '../utility/errors.js';
 import { LoggerModel } from '../models/loggerModel.js';
+import { AuditLogService } from '../services/AuditLogService.js';
 import { agentOrchestrator } from '../orchestration/agentOrchestrator.js';
 import { tripPlannerWorkflow } from '../orchestration/workflows.js';
 import { saveService } from '../services/SaveService.js';
@@ -29,7 +30,7 @@ export async function TripController(req: Request, res: Response) {
             return res.status(400).json({ error: 'End date must be after start date' });
         }
 
-        LoggerModel.log(`Starting trip planning workflow: ${data.places.join(', ')}`);
+        AuditLogService.log(`Starting trip planning: ${data.places.join(', ')}`, 'tripplanner', false, "SUCCESS");
 
         // Track the unique flow API hit
         await saveService.trackUsage('tripplanner', 'api_hit', { places: data.places.length });
@@ -42,6 +43,7 @@ export async function TripController(req: Request, res: Response) {
 
         if (!result.success) {
             console.error('Trip workflow errors:', result.errors);
+            AuditLogService.log(`Trip planning failed: ${data.places.join(', ')}`, 'tripplanner', false, "FAILED");
             return res.status(500).json({
                 error: 'Trip planning workflow failed',
                 details: result.errors
@@ -62,6 +64,7 @@ export async function TripController(req: Request, res: Response) {
         // Ensure we have at least some result
         if (Object.keys(finalResult).length === 0) {
             console.error('Trip workflow produced no results:', result);
+            AuditLogService.log(`Trip planning produced no results: ${data.places.join(', ')}`, 'tripplanner', false, "FAILED");
             return res.status(500).json({
                 error: 'Trip planning completed but produced no results',
                 details: 'All workflow steps returned empty data'
@@ -74,7 +77,7 @@ export async function TripController(req: Request, res: Response) {
             tripType: data.tripType
         });
 
-        LoggerModel.log(`Trip planning completed: ${data.places.join(', ')}`);
+        AuditLogService.log(`Trip planning completed: ${data.places.join(', ')}`, 'tripplanner', false, "SUCCESS");
         return res.status(200).json({
             success: true,
             data: finalResult
@@ -82,6 +85,7 @@ export async function TripController(req: Request, res: Response) {
 
     } catch (error: any) {
         console.error('Trip planning failed:', error);
+        AuditLogService.log(`Trip planning error: ${error.message}`, 'tripplanner', false, "FAILED");
         await saveService.trackUsage('tripplanner', 'api_error', {
             error: error.message,
             places: req.body?.data?.places?.length

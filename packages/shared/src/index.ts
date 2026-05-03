@@ -39,3 +39,5 @@ export {
     TierConfig,
     ModelConfig
 } from './ai-provider.config.js';
+
+export * from './gemVitya.schema.js';

@@ -114,6 +114,22 @@ class DatabaseModel {
           this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id)`);
           this.db.run(`CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON user_api_keys(provider)`);
 
+          // Ensure transactions exists
+          this.db.run(`CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY,
+            amount REAL NOT NULL,
+            type TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            transactionId TEXT,
+            date TEXT NOT NULL,
+            expenseCategory TEXT,
+            savingCategory TEXT,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT
+          )`);
+          this.db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
+
           // Ensure saved_artifacts exists
           this.db.run(`CREATE TABLE IF NOT EXISTS saved_artifacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,6 +208,21 @@ class DatabaseModel {
           skills TEXT,
           cover_letter_para TEXT
       )`);
+
+        this.db.run(`CREATE TABLE IF NOT EXISTS transactions (
+          id TEXT PRIMARY KEY,
+          amount REAL NOT NULL,
+          type TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          transactionId TEXT,
+          date TEXT NOT NULL,
+          expenseCategory TEXT,
+          savingCategory TEXT,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT
+        )`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`);
 
         this.db.run(`CREATE TABLE IF NOT EXISTS user_api_keys (
           id INTEGER PRIMARY KEY AUTOINCREMENT,

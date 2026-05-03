@@ -13,6 +13,8 @@ import persistenceRoutes from "./persistenceRoutes.js";
 import apiKeysRoutes from "./apiKeysRoutes.js";
 import aiRoutes from "./aiRoutes.js";
 import unlockRoutes from "./unlockRoutes.js";
+import { createGemVityaRoutes } from "./gemVityaRoutes.js";
+import { db } from "@gem/db";
 
 console.log('🔧 All route modules imported');
 
@@ -29,6 +31,7 @@ apiRouter.use("/persistence", persistenceRoutes);
 apiRouter.use("/api-keys", apiKeysRoutes);
 apiRouter.use("/ai", aiRoutes);
 apiRouter.use("/unlock", unlockRoutes);
+apiRouter.use("/gem-vitya", createGemVityaRoutes(db, null));
 console.log('✅ All routes mounted');
 
 

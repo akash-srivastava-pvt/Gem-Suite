@@ -9,6 +9,7 @@ import { InviteIcon } from "./icons/invite.js";
 import { CVIcon } from "./icons/cv.js";
 import { ProfileIcon } from "./icons/profile.js";
 import { ProfileApp } from "./ProfileApp/index.js";
+import { GemVitya} from "./GemVitya/GemVitya.js";
 
 const AppGroup = (): ShellApp[] => {
     return [
@@ -46,6 +47,13 @@ const AppGroup = (): ShellApp[] => {
             description: 'Design elegant digital invitations for any occasion.',
             icon: <InviteIcon />,
             component: InvitationApp,
+        },
+        {
+            id: 'finance',
+            name: 'Gem Vitya',
+            description: 'AI-driven personal finance insights and budgeting tools.',
+            icon: <ProfileIcon />, // Placeholder icon
+            component: GemVitya,
         }
     ]
 }
